@@ -4,6 +4,7 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 let recorded = [];
 let filter = "all";
+let historyRange = "all";
 let toastTimer = null;
 let currentElo = null;
 let peakElo = null;
@@ -258,14 +259,24 @@ function renderMatches() {
 // ELO PROGRESSION CHART
 // ==========================================================================
 
-function renderEloHistory(snapshots) {
+function renderEloHistory(snapshots, range = "all") {
   const root = $("elo-chart"), sum = $("history-summary");
   $("history-count").textContent = `${snapshots.length} SNAPSHOT${snapshots.length === 1 ? "" : "S"}`;
   const pts = snapshots.map((s) => ({ v: Number(s.elo), t: new Date(s.captured_at) })).filter((p) => Number.isFinite(p.v));
 
   if (!pts.length) {
-    root.innerHTML = '<p class="empty">NO ELO SNAPSHOTS YET. WAITING FOR FIRST SYNC.</p>';
+    const rangeMsg = range === "7d" ? "IN THE LAST 7 DAYS" : range === "30d" ? "IN THE LAST 30 DAYS" : "YET";
+    root.innerHTML = `<p class="empty">NO ELO SNAPSHOTS ${rangeMsg}. SNAPSHOTS ARE RECORDED WHEN ELO CHANGES ARE DETECTED.</p>`;
     sum.innerHTML = "";
+    return;
+  }
+  if (pts.length === 1) {
+    const single = pts[0];
+    root.innerHTML = `<div class="empty" style="padding:2rem 1rem">
+      <p style="font-size:1.1rem;margin-bottom:0.5rem"><strong>${single.v.toLocaleString()} ELO</strong> RECORDED ON ${single.t.toLocaleDateString([], { month: "short", day: "numeric" })}</p>
+      <p style="color:var(--text-dim);font-size:0.9rem">INSUFFICIENT DATA IN THIS TIME RANGE TO RENDER A TREND LINE. PLAY MORE MATCHES AND YOUR ELO PROGRESSION WILL APPEAR HERE.</p>
+    </div>`;
+    sum.innerHTML = `<div>RECORDED<strong>${single.v.toLocaleString()}</strong></div><div>DATE<strong>${single.t.toLocaleDateString([], { month: "short", day: "numeric" })}</strong></div>`;
     return;
   }
 
@@ -355,9 +366,9 @@ function renderEloHistory(snapshots) {
 // API DATA LOADERS
 // ==========================================================================
 
-async function loadHistory() {
+async function loadHistory(range = historyRange) {
   try {
-    const response = await fetch("/api/history");
+    const response = await fetch(`/api/history?range=${encodeURIComponent(range)}`);
     if (!response.ok) throw new Error("History unavailable");
     const data = await response.json();
 
@@ -370,7 +381,7 @@ async function loadHistory() {
     }
 
     const snapshots = data.snapshots || [];
-    renderEloHistory(snapshots);
+    renderEloHistory(snapshots, range);
 
     recorded = data.matches || [];
     renderMatches();
@@ -458,6 +469,18 @@ document.querySelectorAll(".seg-pills button").forEach((btn) => {
       b.setAttribute("aria-pressed", b === btn);
     });
     renderMatches();
+  });
+});
+
+// ELO history range controls
+document.querySelectorAll("#history-range button").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    historyRange = btn.dataset.range;
+    document.querySelectorAll("#history-range button").forEach((b) => {
+      b.classList.toggle("active", b === btn);
+      b.setAttribute("aria-pressed", b === btn);
+    });
+    await loadHistory(historyRange);
   });
 });
 
