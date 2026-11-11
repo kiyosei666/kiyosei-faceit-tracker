@@ -91,11 +91,54 @@ async function readTrackingData(range = "all") {
   if (normalizedRange === "7d") snapshotQuery += " WHERE captured_at >= NOW() - INTERVAL '7 days'";
   else if (normalizedRange === "30d") snapshotQuery += " WHERE captured_at >= NOW() - INTERVAL '30 days'";
   snapshotQuery += " ORDER BY captured_at ASC";
-  const [snapshots, matches] = await Promise.all([
+  const [snapshotResult, matchResult, chartMatchResult] = await Promise.all([
     pool.query(snapshotQuery),
-    pool.query("SELECT match_id, finished_at, map, outcome, score, stats, stats_status, elo_before, elo_after, elo_change FROM faceit_matches ORDER BY finished_at DESC NULLS LAST LIMIT 100")
+    pool.query("SELECT match_id, finished_at, map, outcome, score, stats, stats_status, elo_before, elo_after, elo_change FROM faceit_matches ORDER BY finished_at DESC NULLS LAST LIMIT 100"),
+    pool.query(
+      `SELECT elo_before, elo_after, started_at, finished_at
+       FROM faceit_matches
+       WHERE elo_before IS NOT NULL OR elo_after IS NOT NULL
+       ORDER BY finished_at ASC NULLS FIRST`
+    )
   ]);
-  return { configured: true, snapshots: snapshots.rows, matches: matches.rows, baseline: BASELINE_ELO, range: normalizedRange };
+
+  // Include exact per-match ELO values when the tracker could safely attribute
+  // a single match between two observed player-profile snapshots. The public
+  // FACEIT history endpoint does not expose historical per-match ELO, so older
+  // imported matches without these values remain intentionally absent.
+  const chartPoints = [...snapshotResult.rows];
+  for (const match of chartMatchResult.rows) {
+    if (match.elo_before !== null && match.started_at) {
+      chartPoints.push({ elo: match.elo_before, captured_at: match.started_at });
+    }
+    if (match.elo_after !== null && match.finished_at) {
+      chartPoints.push({ elo: match.elo_after, captured_at: match.finished_at });
+    }
+  }
+
+  const seenPoints = new Set();
+  const mergedSnapshots = chartPoints
+    .filter((point) => point.captured_at && Number.isFinite(Number(point.elo)))
+    .sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
+    .filter((point) => {
+      const key = `${new Date(point.captured_at).toISOString()}:${Number(point.elo)}`;
+      if (seenPoints.has(key)) return false;
+      seenPoints.add(key);
+      return true;
+    })
+    .filter((point) => {
+      if (normalizedRange === "7d") return new Date(point.captured_at) >= new Date(Date.now() - 7 * 86400000);
+      if (normalizedRange === "30d") return new Date(point.captured_at) >= new Date(Date.now() - 30 * 86400000);
+      return true;
+    });
+
+  return {
+    configured: true,
+    snapshots: mergedSnapshots,
+    matches: matchResult.rows,
+    baseline: BASELINE_ELO,
+    range: normalizedRange
+  };
 }
 
 module.exports = { persistMatches, readTrackingData, BASELINE_ELO, BASELINE_AT };
