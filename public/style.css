@@ -1239,3 +1239,39 @@ body {
 .matches-load-more[hidden] { display: none; }
 .matches-load-more:hover { border-color: rgba(255,85,0,.45); color: var(--text-white); }
 .form-pip-pill.unknown { background: rgba(156,163,175,.08); border: 1px solid rgba(156,163,175,.2); color: var(--text-muted); box-shadow: none; }
+
+
+/* Kiyosei performance ranks — based on the last seven days' aggregate K/D. */
+.form-tier {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 6px 9px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font: 700 10px/1 var(--font-sans);
+  letter-spacing: .09em;
+  vertical-align: middle;
+}
+.form-tier.pending { color: var(--text-dim); border-color: var(--glass-border); }
+.form-tier.bot, .form-pip-pill.bot { color: #ef6464; }
+.form-tier.brain, .form-pip-pill.brain { color: #df985c; }
+.form-tier.warming, .form-pip-pill.warming { color: #d4b65e; }
+.form-tier.solid, .form-pip-pill.solid { color: #a9b56b; }
+.form-tier.locked, .form-pip-pill.locked { color: #83bd75; }
+.form-tier.prime, .form-pip-pill.prime { color: #57d58a; }
+.form-tier.donk, .form-pip-pill.donk { color: #57c9d5; }
+.form-tier.godlike, .form-pip-pill.godlike { color: #c08aff; }
+.form-pip-pill {
+  display: block;
+  min-width: 0;
+  height: 9px;
+  border-radius: 4px;
+  background: currentColor;
+  opacity: .85;
+}
+.form-pip-pill.pending { background: rgba(156,163,175,.2); border: 1px solid rgba(156,163,175,.35); }
+.form-sequence-legend .legend-bot { background: #ef6464; }
+.form-sequence-legend .legend-average { background: #d4b65e; }
+.form-sequence-legend .legend-prime { background: #57d58a; }
+.form-sequence-legend .legend-pending { background: rgba(156,163,175,.65); }
