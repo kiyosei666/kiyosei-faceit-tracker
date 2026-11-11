@@ -4,22 +4,6 @@
    Aesthetic: Frosted glass, ambient orange neon, pill clickables
    ========================================================================== */
 
-@font-face {
-  font-family: 'Coolvetica';
-  src: url('/fonts/Coolvetica Rg.otf') format('opentype');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Coolvetica';
-  src: url('/fonts/Coolvetica Hv Comp.otf') format('opentype');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
 :root {
   color-scheme: dark;
   --bg-main: #070709;
@@ -44,7 +28,7 @@
   --text-muted: #9ca3af;
   --text-dim: #6b7280;
 
-  --font-coolvetica: 'Coolvetica', 'Barlow Condensed', sans-serif;
+  --font-coolvetica: 'Space Grotesk', 'Inter', sans-serif;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
   --blur-card: blur(24px) saturate(140%);
