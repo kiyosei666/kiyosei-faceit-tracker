@@ -116,38 +116,33 @@
             </div>
 
             <div class="form-body">
-              <!-- Hero K/D & Total K/D/A -->
-              <div class="form-hero-card">
-                <div class="kda-label-badge">PERFORMANCE RATIO</div>
-                <div class="kda-primary">
-                  <span class="kda-big" id="form-kd">—</span>
-                  <span class="kda-unit">K/D</span>
+              <div class="form-overview">
+                <div class="form-kd-block">
+                  <span class="form-eyebrow">MATCH RATING · K/D</span>
+                  <div class="kda-primary">
+                    <span class="kda-big" id="form-kd">—</span>
+                    <span class="kda-unit">K/D</span>
+                  </div>
+                  <div class="form-total-kda">TOTAL K / D / A <strong id="form-kda-vals">— / — / —</strong></div>
                 </div>
-                <div class="pill pill-kda-total" id="form-kda-total">
-                  TOTAL K/D/A: <span class="kda-highlight" id="form-kda-vals">— / — / —</span>
+                <div class="form-record-block">
+                  <span class="form-eyebrow">WIN RATE</span>
+                  <strong id="form-winrate" class="form-winrate">—%</strong>
+                  <span id="form-record" class="form-record">0W - 0L</span>
                 </div>
               </div>
 
-              <!-- Form Metrics 2x2 Grid -->
               <div class="form-stats-grid">
-                <div class="form-stat-tile">
-                  <span class="stat-lbl">WIN RATE</span>
-                  <strong class="stat-num" id="form-winrate">—%</strong>
-                  <span class="stat-sub" id="form-record">0W - 0L</span>
-                </div>
-
                 <div class="form-stat-tile">
                   <span class="stat-lbl">AVG ADR</span>
                   <strong class="stat-num" id="form-adr">—</strong>
-                  <span class="stat-sub">DAMAGE / RND</span>
+                  <span class="stat-sub">DAMAGE / ROUND</span>
                 </div>
-
                 <div class="form-stat-tile">
-                  <span class="stat-lbl">HEADSHOTS</span>
+                  <span class="stat-lbl">HEADSHOT %</span>
                   <strong class="stat-num" id="form-hs">—%</strong>
-                  <span class="stat-sub">PRECISION</span>
+                  <span class="stat-sub">ACCURACY</span>
                 </div>
-
                 <div class="form-stat-tile">
                   <span class="stat-lbl">KDA RATIO</span>
                   <strong class="stat-num" id="form-kda-ratio">—</strong>
@@ -155,13 +150,13 @@
                 </div>
               </div>
 
-              <!-- Match Sequence Pills -->
               <div class="form-sequence-card">
                 <div class="seq-head">
-                  <span class="stat-lbl">RECENT FORM SEQUENCE</span>
+                  <span class="stat-lbl">LAST 16 RESULTS</span>
                   <span class="seq-count" id="form-streak">—</span>
                 </div>
                 <div class="form-pills-strip" id="form-pips" aria-label="Recent match sequence"></div>
+                <div class="form-sequence-legend"><span><i class="legend-win"></i> WIN</span><span><i class="legend-loss"></i> LOSS</span></div>
               </div>
             </div>
           </section>

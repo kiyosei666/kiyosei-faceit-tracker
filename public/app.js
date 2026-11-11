@@ -213,34 +213,47 @@ function renderCurrentForm(matches) {
 
 function matchRow(match) {
   const dateValue = match.finished_at || match.date;
-  const date = dateValue ? new Date(Number(dateValue) * 1000).toLocaleDateString([], { month: "short", day: "numeric" }) : "Recent";
+  const date = dateValue ? new Date(Number(dateValue) * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Recent";
   const result = (match.outcome || "Unknown").toUpperCase();
   const isWin = result === "WIN";
   const isLoss = result === "LOSS";
   const cls = isWin ? "win" : isLoss ? "loss" : "";
 
   const s = match.stats || {};
+  const kills = stat(s, "Kills", "K");
+  const deaths = stat(s, "Deaths", "D");
+  const assists = stat(s, "Assists", "A");
   const kd = stat(s, "K/D Ratio", "K/D");
   const adr = stat(s, "ADR");
   const hs = stat(s, "Headshots %", "Headshots");
   const change = match.elo_change;
 
   const eloMarkup = change === null || change === undefined
-    ? '<span class="match-elo-delta" style="color:var(--text-dim)">–</span>'
+    ? '<span class="match-elo-delta unavailable">—</span>'
     : `<span class="match-elo-delta ${Number(change) >= 0 ? "pos" : "neg"}">${Number(change) > 0 ? "+" : ""}${Number(change)}</span>`;
 
-  return `<div class="match-item">
-    <span class="match-res-pill ${cls}">${escapeHtml(result)}</span>
-    <span class="match-map" title="${escapeHtml(match.map || "FACEIT match")}">${escapeHtml(match.map || "FACEIT MATCH")}</span>
-    <span class="match-score">${escapeHtml(match.score || "–")}</span>
-    <div class="match-kda">
-      <span>${kd !== null ? number(kd, 2) : "–"} KD</span> ·
-      <span>${adr !== null ? number(adr, 0) : "–"} ADR</span> ·
-      <span>${hs !== null ? number(hs, 0) + "%" : "–"} HS</span>
+  const kda = [kills, deaths, assists].every((v) => v !== null && v !== undefined)
+    ? `${number(kills, 0)} / ${number(deaths, 0)} / ${number(assists, 0)}`
+    : "K/D/A —";
+  const performance = [
+    kd !== null ? `${number(kd, 2)} KD` : null,
+    adr !== null ? `${number(adr, 0)} ADR` : null,
+    hs !== null ? `${number(hs, 0)}% HS` : null
+  ].filter(Boolean).join(" · ") || "STATS PENDING";
+
+  return `<article class="match-item ${cls}">
+    <span class="match-result-mark" aria-label="${escapeHtml(result)}"><span></span></span>
+    <div class="match-main">
+      <strong class="match-map" title="${escapeHtml(match.map || "FACEIT match")}">${escapeHtml(match.map || "FACEIT MATCH")}</strong>
+      <span class="match-date">${escapeHtml(date)}</span>
     </div>
-    ${eloMarkup}
-    <time class="match-time">${escapeHtml(date)}</time>
-  </div>`;
+    <div class="match-score-block">
+      <strong class="match-score">${escapeHtml(match.score || "—")}</strong>
+      <span class="match-kda-line">${kda}</span>
+    </div>
+    <span class="match-performance">${performance}</span>
+    <div class="match-elo-block">${eloMarkup}<span class="match-elo-label">ELO</span></div>
+  </article>`;
 }
 
 function renderMatches() {
