@@ -38,7 +38,7 @@ app.get("/api/player", async (_req, res) => {
     if (!playerId) throw new Error("FACEIT did not return a player ID for this nickname.");
     const [stats, history] = await Promise.all([
       faceitGet(`/players/${playerId}/stats/${GAME_ID}`).catch(() => null),
-      faceitGet(`/players/${playerId}/history?game=${GAME_ID}&offset=0&limit=20`).catch(() => ({ items: [] }))
+      faceitGet(`/players/${playerId}/history?game=${GAME_ID}&offset=0&limit=100`).catch(() => ({ items: [] }))
     ]);
     const game = player.games?.[GAME_ID] || {};
     let tracking = { configured: false, saved: 0 };
