@@ -417,20 +417,27 @@ async function loadHistory(range = historyRange) {
     renderMatches();
     renderCurrentForm(recorded);
 
-    // Compute Peak ELO from Supabase DB snapshots & matches
-    const allElo = [
-      ...snapshots.map((s) => Number(s.elo)),
-      ...recorded.map((m) => Number(m.elo_after)),
-      ...recorded.map((m) => Number(m.elo_before)),
-      Number(currentElo)
-    ].filter((v) => Number.isFinite(v) && v > 0);
+    // Peak ELO comes from a server-side aggregate across the complete database,
+    // plus the explicitly sourced historical record. It is independent of the
+    // selected chart range and the currently paginated match-history window.
+    peakElo = data.peakElo === null || data.peakElo === undefined
+      ? null
+      : Number(data.peakElo);
 
-    peakElo = allElo.length ? Math.max(...allElo) : (currentElo || 2127);
-    countUp($("peak-elo"), peakElo);
-
-    const peakLvl = getSkillLevel(peakElo);
-    $("peak-level-icon").src = getLevelIcon(peakLvl, peakLvl >= 11);
-    $("peak-level-icon").alt = `Level ${peakLvl}`;
+    if (Number.isFinite(peakElo) && peakElo > 0) {
+      countUp($("peak-elo"), peakElo);
+      const peakLvl = getSkillLevel(peakElo);
+      $("peak-level-icon").src = getLevelIcon(peakLvl, peakLvl >= 11);
+      $("peak-level-icon").alt = `Level ${peakLvl}`;
+      $("peak-pill").title = data.peakEloSource === "user_reported"
+        ? "All-time peak · historical value previously reported by you; exact date unavailable"
+        : "All-time peak · highest value in recorded ELO data";
+    } else {
+      $("peak-elo").textContent = "—";
+      $("peak-level-icon").src = getLevelIcon(getSkillLevel(currentElo));
+      $("peak-level-icon").alt = "Current FACEIT level";
+      $("peak-pill").title = "No historical peak data available yet";
+    }
 
   } catch (error) {
     $("history-count").textContent = "OFFLINE";

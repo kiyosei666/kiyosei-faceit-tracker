@@ -93,7 +93,7 @@ async function readTrackingData(range = "all", offset = 0, limit = 100) {
   snapshotQuery += " ORDER BY captured_at ASC";
   const safeOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
   const safeLimit = Math.min(200, Math.max(1, Number.parseInt(limit, 10) || 100));
-  const [snapshotResult, matchResult, chartMatchResult, countResult] = await Promise.all([
+  const [snapshotResult, matchResult, chartMatchResult, countResult, peakResult] = await Promise.all([
     pool.query(snapshotQuery),
     pool.query("SELECT match_id, finished_at, map, outcome, score, stats, stats_status, elo_before, elo_after, elo_change FROM faceit_matches ORDER BY finished_at DESC NULLS LAST, match_id DESC LIMIT $1 OFFSET $2", [safeLimit, safeOffset]),
     pool.query(
@@ -102,7 +102,21 @@ async function readTrackingData(range = "all", offset = 0, limit = 100) {
        WHERE elo_before IS NOT NULL OR elo_after IS NOT NULL
        ORDER BY finished_at ASC NULLS FIRST`
     ),
-    pool.query("SELECT COUNT(*)::int AS total FROM faceit_matches")
+    pool.query("SELECT COUNT(*)::int AS total FROM faceit_matches"),
+    pool.query(
+      `SELECT elo, source FROM (
+         SELECT elo, 'snapshot'::text AS source FROM elo_snapshots
+         UNION ALL
+         SELECT elo_before, 'match'::text FROM faceit_matches WHERE elo_before IS NOT NULL
+         UNION ALL
+         SELECT elo_after, 'match'::text FROM faceit_matches WHERE elo_after IS NOT NULL
+         UNION ALL
+         SELECT elo, source FROM elo_records WHERE record_key = 'all_time_peak'
+       ) candidates
+       WHERE elo IS NOT NULL AND elo > 0
+       ORDER BY elo DESC
+       LIMIT 1`
+    )
   ]);
 
   // Include exact per-match ELO values when the tracker could safely attribute
@@ -143,6 +157,8 @@ async function readTrackingData(range = "all", offset = 0, limit = 100) {
     matchOffset: safeOffset,
     matchLimit: safeLimit,
     hasMoreMatches: safeOffset + matchResult.rows.length < (countResult.rows[0]?.total || 0),
+    peakElo: peakResult.rows[0]?.elo ?? null,
+    peakEloSource: peakResult.rows[0]?.source ?? null,
     baseline: BASELINE_ELO,
     range: normalizedRange
   };
