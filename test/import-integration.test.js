@@ -283,6 +283,56 @@ async function runTests() {
     console.log("✓ Test 6 passed");
 
     // -------------------------------------------------------------
+    // Test 6b: HTTP 200 with missing rounds, missing player, or unexpected structure
+    // Must NOT be marked 'unavailable'; must be marked 'pending' to preserve retryability.
+    // -------------------------------------------------------------
+    console.log("Test 6b: Incomplete HTTP 200 payloads marked 'pending'");
+    await resetDatabase();
+
+    // m-no-rounds: rounds is empty array []
+    // m-no-player: rounds has teams/players but test player is missing
+    // m-malformed: response is {} or unexpected structure
+    mockResponses["/players/test-player-1111/history?game=cs2&limit=100&offset=0"] = (req, res, send) => {
+      send(200, {
+        items: [
+          createMatch("m-no-rounds", 1700003000),
+          createMatch("m-no-player", 1700002000),
+          createMatch("m-malformed", 1700001000)
+        ]
+      });
+    };
+
+    mockResponses["/matches/m-no-rounds/stats"] = (req, res, send) => {
+      send(200, { rounds: [] });
+    };
+    mockResponses["/matches/m-no-player/stats"] = (req, res, send) => {
+      send(200, {
+        rounds: [{
+          round_stats: { Map: "de_dust2" },
+          teams: [{ players: [{ player_id: "other-player", player_stats: { "K/D": "1.0" } }] }]
+        }]
+      });
+    };
+    mockResponses["/matches/m-malformed/stats"] = (req, res, send) => {
+      send(200, { unexpected_field: true });
+    };
+
+    const resIncomplete = await importCareer({ maxPages: 1, delayMs: 1 });
+    assert.strictEqual(resIncomplete.ok, true);
+    assert.strictEqual(resIncomplete.saved, 3);
+
+    const rowsIncomplete = (await pool.query("SELECT match_id, stats, stats_status FROM faceit_matches WHERE match_id IN ('m-no-rounds', 'm-no-player', 'm-malformed')")).rows;
+    for (const r of rowsIncomplete) {
+      assert.strictEqual(r.stats, null, `Stats for ${r.match_id} should be null`);
+      assert.strictEqual(r.stats_status, "pending", `Incomplete response for ${r.match_id} must be 'pending', not 'unavailable'`);
+    }
+
+    delete mockResponses["/matches/m-no-rounds/stats"];
+    delete mockResponses["/matches/m-no-player/stats"];
+    delete mockResponses["/matches/m-malformed/stats"];
+    console.log("✓ Test 6b passed");
+
+    // -------------------------------------------------------------
     // Test 7: HTTP 500 retry and recovery
     // -------------------------------------------------------------
     console.log("Test 7: HTTP 500 retry and recovery");
@@ -319,6 +369,52 @@ async function runTests() {
     assert.strictEqual(row500.stats_status, "available");
     delete mockResponses["/matches/m-500/stats"];
     console.log("✓ Test 7 passed");
+
+    // -------------------------------------------------------------
+    // Test 7b: Explicit timeout retry and recovery
+    // -------------------------------------------------------------
+    console.log("Test 7b: Explicit timeout retry and recovery");
+    await resetDatabase();
+
+    let attemptsTimeout = 0;
+    process.env.FACEIT_TIMEOUT_MS = "150"; // low timeout for fast test
+
+    mockResponses["/players/test-player-1111/history?game=cs2&limit=100&offset=0"] = (req, res, send) => {
+      send(200, { items: [createMatch("m-timeout", 1700001000)] });
+    };
+
+    mockResponses["/matches/m-timeout/stats"] = (req, res, send) => {
+      attemptsTimeout++;
+      if (attemptsTimeout === 1) {
+        // Delay response beyond timeout threshold to trigger AbortSignal timeout
+        setTimeout(() => {
+          if (!res.writableEnded) send(200, { rounds: [] });
+        }, 300);
+        return;
+      }
+      send(200, {
+        rounds: [{
+          round_stats: { Map: "de_anubis" },
+          teams: [
+            {
+              team_stats: { "Final Score": "13" },
+              players: [{ player_id: TEST_PLAYER_ID, nickname: "kiyosei", player_stats: { "K/D Ratio": "1.8" } }]
+            },
+            { team_stats: { "Final Score": "10" }, players: [] }
+          ]
+        }]
+      });
+    };
+
+    const resTimeout = await importCareer({ maxPages: 1, delayMs: 1 });
+    assert.strictEqual(resTimeout.ok, true);
+    assert.strictEqual(attemptsTimeout, 2, "Should retry after timeout and succeed on second attempt");
+    const rowTimeout = (await pool.query("SELECT stats_status FROM faceit_matches WHERE match_id = 'm-timeout'")).rows[0];
+    assert.strictEqual(rowTimeout.stats_status, "available");
+
+    delete mockResponses["/matches/m-timeout/stats"];
+    delete process.env.FACEIT_TIMEOUT_MS;
+    console.log("✓ Test 7b passed");
 
     // -------------------------------------------------------------
     // Test 8: Network failure (socket hang up) retry and recovery

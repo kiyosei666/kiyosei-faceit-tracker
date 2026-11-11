@@ -75,24 +75,39 @@ async function syncRecent() {
 
 /**
  * Fetch stats for a match.
- * Treats HTTP 404 as confirmed unavailable statistics ('unavailable').
- * Treats 429, 5xx, or network issues as transient errors (re-throws so caller can abort/retry).
+ * Classification rules:
+ * - Confirmed HTTP 404 responses are classified as 'unavailable'.
+ * - Valid responses containing player stats are classified as 'available'.
+ * - HTTP 200 responses with missing rounds, missing player entries, malformed structures,
+ *   or unexpected payloads must NOT automatically be marked 'unavailable'.
+ *   Instead, they remain 'pending' so they can be retried on subsequent sync/backfill runs.
+ * - Transient errors (429, 5xx, timeout, network failure) re-throw so the caller can retry/abort.
  */
 async function fetchMatchStatsSafe(matchId, playerId, nickname) {
   try {
     const statsData = await faceitGet(`/matches/${encodeURIComponent(matchId)}/stats`);
     const parsed = getPlayerMatchStats(statsData, playerId, nickname);
+    if (parsed.stats) {
+      return {
+        stats: parsed.stats,
+        map: parsed.map,
+        score: parsed.score,
+        status: "available"
+      };
+    }
+    // HTTP 200 succeeded, but player stats were not found or payload structure was incomplete/missing.
+    // Classify as 'pending' so that backfill / retries can re-attempt.
     return {
-      stats: parsed.stats,
+      stats: null,
       map: parsed.map,
       score: parsed.score,
-      status: parsed.stats ? "available" : "unavailable"
+      status: "pending"
     };
   } catch (error) {
     if (error.status === 404) {
       return { stats: null, map: null, score: null, status: "unavailable" };
     }
-    // Transient error (429, 5xx, network failure)
+    // Transient error (429, 5xx, timeout, network failure)
     throw error;
   }
 }

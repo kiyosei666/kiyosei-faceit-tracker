@@ -8,9 +8,12 @@ function friendlyMessage(status) {
     : `FACEIT API returned HTTP ${status}.`;
 }
 
-// Retries only transient failures (429, 5xx, network errors) with
+// Retries only transient failures (429, 5xx, timeouts, network errors) with
 // exponential backoff. 4xx errors such as 401/403/404 fail immediately.
-async function faceitGet(endpoint, { retries = 3, baseDelayMs = 800 } = {}) {
+const getTimeoutMs = () => Number(process.env.FACEIT_TIMEOUT_MS) || 10000;
+
+async function faceitGet(endpoint, { retries = 3, baseDelayMs = 800, timeoutMs } = {}) {
+  const effectiveTimeout = timeoutMs || getTimeoutMs();
   if (!process.env.FACEIT_API_KEY) {
     const error = new Error("FACEIT_API_KEY is not configured on the server.");
     error.status = 503;
@@ -19,8 +22,13 @@ async function faceitGet(endpoint, { retries = 3, baseDelayMs = 800 } = {}) {
   let lastError;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      const signal = typeof AbortSignal.timeout === "function"
+        ? AbortSignal.timeout(effectiveTimeout)
+        : undefined;
+
       const response = await fetch(`${API_BASE}${endpoint}`, {
-        headers: { Authorization: `Bearer ${process.env.FACEIT_API_KEY}`, Accept: "application/json" }
+        headers: { Authorization: `Bearer ${process.env.FACEIT_API_KEY}`, Accept: "application/json" },
+        signal
       });
       if (response.ok) return await response.json();
       const error = new Error(friendlyMessage(response.status));
@@ -31,6 +39,11 @@ async function faceitGet(endpoint, { retries = 3, baseDelayMs = 800 } = {}) {
       lastError = error;
     } catch (error) {
       if (error.status && error.status < 500 && error.status !== 429) throw error;
+      // Mark timeout/abort errors with clear message
+      if (error.name === "TimeoutError" || error.name === "AbortError") {
+        error.isTimeout = true;
+        error.message = `FACEIT request timed out after ${effectiveTimeout}ms.`;
+      }
       lastError = error;
     }
     if (attempt < retries) {
