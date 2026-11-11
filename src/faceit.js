@@ -60,13 +60,18 @@ async function faceitGet(endpoint, { retries = 3, baseDelayMs = 800, timeoutMs }
 }
 
 function getPlayerOutcome(match, playerId) {
-  if (!match || typeof match !== "object") return "Unknown";
+  if (!match || typeof match !== "object" || !playerId) return "Unknown";
   const winner = match.results?.winner;
   const teams = match.teams && typeof match.teams === "object" ? match.teams : {};
   for (const [teamName, team] of Object.entries(teams)) {
-    const roster = Array.isArray(team?.roster) ? team.roster : [];
-    if (roster.some((member) => member && member.player_id === playerId)) {
-      return winner ? (winner === teamName ? "Win" : "Loss") : "Unknown";
+    // FACEIT history uses roster in some payloads and players in others.
+    const members = [
+      ...(Array.isArray(team?.roster) ? team.roster : []),
+      ...(Array.isArray(team?.players) ? team.players : [])
+    ];
+    if (members.some((member) => member && member.player_id === playerId)) {
+      if (!winner) return "Unknown";
+      return String(winner).toLowerCase() === String(teamName).toLowerCase() ? "Win" : "Loss";
     }
   }
   return "Unknown";
