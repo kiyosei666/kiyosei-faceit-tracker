@@ -63,9 +63,29 @@ async function syncRecent() {
       seen = (history.items || []).length;
       const result = await persistMatches(history.items || [], player.player_id, player.nickname || NICKNAME(), game.faceit_elo);
       saved = result.saved;
+      let outcomesRepaired = 0;
+      const unknownRows = await pool.query(
+        `SELECT match_id FROM faceit_matches
+         WHERE outcome IS NULL OR outcome = 'Unknown'
+         ORDER BY finished_at DESC NULLS LAST, match_id ASC
+         LIMIT 50`
+      );
+      for (const row of unknownRows.rows) {
+        try {
+          const detail = await faceitGet(`/matches/${encodeURIComponent(row.match_id)}`);
+          const outcome = getPlayerOutcome(detail, player.player_id);
+          if (outcome !== "Unknown") {
+            await pool.query("UPDATE faceit_matches SET outcome = $1 WHERE match_id = $2", [outcome, row.match_id]);
+            outcomesRepaired++;
+          }
+          await sleep(250);
+        } catch (err) {
+          console.warn(`Recent-sync outcome repair skipped for match ${row.match_id}: ${err.message}`);
+        }
+      }
       await finishRun(runId, "ok", seen, saved, null);
       await setState("last_success", { at: new Date().toISOString(), kind: "recent", seen, saved });
-      return { ok: true, seen, saved };
+      return { ok: true, seen, saved, outcomesRepaired };
     } catch (error) {
       await finishRun(runId, "error", seen, saved, error.message);
       throw error;
