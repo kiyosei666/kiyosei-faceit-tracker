@@ -168,8 +168,8 @@ function renderCurrentForm(matches) {
   // Win Rate
   const totalCompleted = wins + losses;
   const winRate = totalCompleted > 0 ? Math.round((wins / totalCompleted) * 100) : 0;
-  $("form-winrate").textContent = `${winRate}%`;
-  $("form-record").textContent = `${wins}W - ${losses}L (${last30.length} GP)`;
+  $("form-winrate").textContent = totalCompleted > 0 ? `${winRate}%` : "—%";
+  $("form-record").textContent = `${wins}W - ${losses}L (${totalCompleted} decided / ${last30.length} GP)`;
 
   // ADR & HS
   $("form-adr").textContent = adrCount > 0 ? (totalAdr / adrCount).toFixed(1) : "—";
@@ -198,10 +198,12 @@ function renderCurrentForm(matches) {
   const pips = last30.slice(0, 16).map((m) => {
     const out = (m.outcome || "").toLowerCase();
     const isWin = out === "win";
-    const letter = isWin ? "W" : "L";
-    const cls = isWin ? "w" : "l";
+    const isLoss = out === "loss";
+    const letter = isWin ? "W" : isLoss ? "L" : "—";
+    const cls = isWin ? "w" : isLoss ? "l" : "unknown";
     const date = m.finished_at ? new Date(Number(m.finished_at) * 1000).toLocaleDateString([], { month: "short", day: "numeric" }) : "";
-    const tooltip = `${m.map || "Match"} · ${m.score || ""} · ${isWin ? "Win" : "Loss"} ${date}`;
+    const label = isWin ? "Win" : isLoss ? "Loss" : "Result unavailable";
+    const tooltip = `${m.map || "Match"} · ${m.score || ""} · ${label} ${date}`;
     return `<span class="form-pip-pill ${cls}" title="${escapeHtml(tooltip)}">${letter}</span>`;
   });
   $("form-pips").innerHTML = pips.join("");

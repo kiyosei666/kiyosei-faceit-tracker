@@ -6,9 +6,11 @@
 
 :root {
   color-scheme: dark;
-  --bg-main: #070709;
-  --glass-surface: rgba(18, 19, 24, 0.72);
-  --glass-surface-hover: rgba(26, 28, 36, 0.82);
+  --bg-main: #030303;
+  --bg-gradient-top: #282828;
+  --bg-gradient-bottom: #030303;
+  --glass-surface: rgba(18, 18, 18, 0.76);
+  --glass-surface-hover: rgba(40, 40, 40, 0.82);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-border-hover: rgba(255, 85, 0, 0.4);
   --glass-border-subtle: rgba(255, 255, 255, 0.05);
@@ -47,7 +49,8 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: var(--bg-main);
+  background: linear-gradient(180deg, var(--bg-gradient-top) 0%, #171717 34%, var(--bg-gradient-bottom) 100%);
+  background-attachment: fixed;
   color: var(--text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -63,9 +66,8 @@ body {
   pointer-events: none;
   z-index: 0;
   background-image:
-    radial-gradient(900px 500px at 85% -5%, rgba(255, 85, 0, 0.12), transparent 70%),
-    radial-gradient(700px 450px at 15% 95%, rgba(255, 85, 0, 0.06), transparent 70%),
-    radial-gradient(1100px 700px at 50% 40%, rgba(20, 21, 26, 0.5), transparent 100%);
+    radial-gradient(900px 500px at 85% -5%, rgba(255, 85, 0, 0.055), transparent 70%),
+    radial-gradient(700px 450px at 15% 95%, rgba(255, 255, 255, 0.025), transparent 70%);
 }
 
 .dashboard-viewport {
@@ -1210,3 +1212,12 @@ body {
   .match-date, .match-kda-line { font-size: 9px; }
   .match-elo-delta { font-size: 12px; }
 }
+
+
+/* KIYOSEI grayscale gradient system */
+html, body { background-color: #030303; }
+.glass-card { background: linear-gradient(145deg, rgba(40,40,40,.78), rgba(12,12,12,.82)); }
+.form-overview { background: linear-gradient(120deg, rgba(40,40,40,.82), rgba(10,10,10,.78)); }
+.form-sequence-card { background: linear-gradient(145deg, rgba(40,40,40,.38), rgba(8,8,8,.48)); }
+
+.form-pip-pill.unknown { background: rgba(156,163,175,.18); color: #9ca3af; border: 1px solid rgba(156,163,175,.22); }
