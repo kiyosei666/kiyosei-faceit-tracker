@@ -194,10 +194,12 @@ function renderCurrentForm(matches) {
     else if (outcome === "loss") losses++;
   }
 
-  const kd = withStats.length && withStats.reduce((sum, match) =>
-    sum + formNumber(stat(match.stats || {}, "Kills", "K")), 0) /
-    (withStats.reduce((sum, match) =>
-      sum + formNumber(stat(match.stats || {}, "Deaths", "D")), 0) || NaN);
+  const totalKdKills = withStats.reduce((sum, match) =>
+    sum + formNumber(stat(match.stats || {}, "Kills", "K")), 0);
+  const totalKdDeaths = withStats.reduce((sum, match) =>
+    sum + formNumber(stat(match.stats || {}, "Deaths", "D")), 0);
+  const kd = withStats.length && totalKdDeaths > 0
+    ? totalKdKills / totalKdDeaths : null;
   const tier = getFormTier(kd);
   $("form-kd").textContent = Number.isFinite(kd) ? kd.toFixed(2) : "—";
   $("form-tier").textContent = tier.label;
