@@ -44,9 +44,11 @@ async function persistMatches(historyItems, playerId, nickname, currentElo) {
       score = classified.score;
       statsStatus = classified.status;
     } catch (error) {
-      const classified = classifyMatchStats(null, error);
-      matchStats = classified.stats;
-      statsStatus = classified.status;
+      if (error.status === 404) {
+        statsStatus = "unavailable";
+      } else {
+        statsStatus = "pending";
+      }
       console.warn(`Could not fetch stats for match ${match.match_id}: ${error.message}`);
     }
 
