@@ -118,7 +118,7 @@ async function importCareer({ maxPages = 5, delayMs = 250, backfillPending = tru
   if (!(await ensureSchema())) { const e = new Error("Database is not configured."); e.status = 503; throw e; }
   return withLock(async () => {
     const runId = await startRun("career_import");
-    let totalSeen = 0, totalSaved = 0, totalRepaired = 0;
+    let totalSeen = 0, totalSaved = 0, totalRepaired = 0, totalOutcomeRepaired = 0;
     try {
       const player = await loadPlayer();
       const nickname = player.nickname || NICKNAME();
@@ -174,9 +174,33 @@ async function importCareer({ maxPages = 5, delayMs = 250, backfillPending = tru
         }
       }
 
+      // Repair historical outcomes saved as Unknown by the older roster-only parser.
+      // Only write a result when FACEIT identifies the player on a winning/losing team.
+      if (backfillPending) {
+        const unknownRows = await pool.query(
+          `SELECT match_id FROM faceit_matches
+           WHERE outcome IS NULL OR outcome = 'Unknown'
+           ORDER BY finished_at DESC NULLS LAST, match_id ASC
+           LIMIT 50`
+        );
+        for (const row of unknownRows.rows) {
+          try {
+            const detail = await faceitGet(`/matches/${encodeURIComponent(row.match_id)}`);
+            const outcome = getPlayerOutcome(detail, player.player_id);
+            if (outcome !== "Unknown") {
+              await pool.query("UPDATE faceit_matches SET outcome = $1 WHERE match_id = $2", [outcome, row.match_id]);
+              totalOutcomeRepaired++;
+            }
+            await sleep(delayMs);
+          } catch (err) {
+            console.warn(`Outcome backfill skipped for match ${row.match_id}: ${err.message}`);
+          }
+        }
+      }
+
       if (state.done) {
         await finishRun(runId, "ok", 0, totalSaved, null);
-        return { ok: true, done: true, seen: 0, saved: totalSaved, repaired: totalRepaired, state };
+        return { ok: true, done: true, seen: 0, saved: totalSaved, repaired: totalRepaired, outcomesRepaired: totalOutcomeRepaired, state };
       }
 
       const durableSeen = new Set(state.seenBoundaryIds);
@@ -326,7 +350,7 @@ async function importCareer({ maxPages = 5, delayMs = 250, backfillPending = tru
       }
 
       await finishRun(runId, "ok", totalSeen, totalSaved, null);
-      return { ok: true, done: Boolean(state.done), seen: totalSeen, saved: totalSaved, repaired: totalRepaired, state };
+      return { ok: true, done: Boolean(state.done), seen: totalSeen, saved: totalSaved, repaired: totalRepaired, outcomesRepaired: totalOutcomeRepaired, state };
     } catch (error) {
       await finishRun(runId, "error", totalSeen, totalSaved, error.message);
       throw error;
