@@ -1219,3 +1219,5 @@ html, body { background-color: #030303; }
 .glass-card { background: linear-gradient(145deg, rgba(40,40,40,.78), rgba(12,12,12,.82)); }
 .form-overview { background: linear-gradient(120deg, rgba(40,40,40,.82), rgba(10,10,10,.78)); }
 .form-sequence-card { background: linear-gradient(145deg, rgba(40,40,40,.38), rgba(8,8,8,.48)); }
+
+.form-pip-pill.unknown { background: rgba(156,163,175,.18); color: #9ca3af; border: 1px solid rgba(156,163,175,.22); }
