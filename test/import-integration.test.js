@@ -3,15 +3,18 @@
  *
  * Requirements covered:
  * 1. Successful page import.
- * 2. Transaction rollback after insertion failure (neither matches nor cursor commit).
- * 3. Cursor rollback when page transaction fails.
- * 4. Successful resume after interruption.
- * 5. Duplicate handling across overlapping pages.
- * 6. Timestamp ties and repeated boundary matches.
- * 7. HTTP 404 statistics handling (marked 'unavailable').
- * 8. HTTP 429/500/network failure and recovery.
- * 9. Backfilling previously imported matches with missing statistics.
- * 10. Re-importing completed history without duplicating records or inflating counters.
+ * 2. Genuine PostgreSQL transaction rollback after insertion failure:
+ *    At least one match INSERT succeeds inside BEGIN, then a DB error occurs (e.g. check constraint violation).
+ *    Verify neither the inserted match nor sync_state cursor commits.
+ * 3. Successful resume after interruption across separate importCareer invocations.
+ * 4. Duplicate handling across overlapping pages & durable boundary tracking.
+ * 5. Timestamp ties without premature completion or skipped matches.
+ * 6. HTTP 404 statistics handling (marked 'unavailable').
+ * 7. Explicit HTTP 500 retry and recovery test.
+ * 8. Explicit network failure (socket hang up / ECONNRESET) retry and recovery test.
+ * 9. Explicit HTTP 429 retry and recovery test.
+ * 10. Backfilling previously imported matches with pending statistics.
+ * 11. Re-importing completed history without duplicating records or inflating counters.
  */
 
 const http = require("http");
@@ -125,7 +128,7 @@ async function runTests() {
       send(200, { items: p1Matches });
     };
 
-    const res1 = await importCareer({ maxPages: 1, delayMs: 10 });
+    const res1 = await importCareer({ maxPages: 1, delayMs: 1 });
     assert.strictEqual(res1.ok, true);
     assert.strictEqual(res1.seen, 2);
     assert.strictEqual(res1.saved, 2);
@@ -143,43 +146,58 @@ async function runTests() {
     console.log("✓ Test 1 passed");
 
     // -------------------------------------------------------------
-    // Test 2 & 3: Transaction rollback & cursor rollback on failure
+    // Test 2: Genuine PostgreSQL mid-transaction failure and rollback
+    // Match 1 inserts successfully inside transaction; Match 2 triggers a DB failure
+    // (via a temporary trigger or constraint). Verify Match 1 and cursor are rolled back.
     // -------------------------------------------------------------
-    console.log("Test 2 & 3: Transaction and cursor rollback after mid-page DB/stats failure");
+    console.log("Test 2: Genuine PostgreSQL failure mid-transaction and rollback");
     await resetDatabase();
 
-    // Set up mock with a second match stats causing transient 500 error
+    // Attach a PostgreSQL trigger that fails specifically on match_id = 'db-fail-2'
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION fail_on_match_2() RETURNS TRIGGER AS $$
+      BEGIN
+        IF NEW.match_id = 'db-fail-2' THEN
+          RAISE EXCEPTION 'Simulated database failure mid-transaction';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS trg_fail_on_match_2 ON faceit_matches;
+      CREATE TRIGGER trg_fail_on_match_2
+        BEFORE INSERT ON faceit_matches
+        FOR EACH ROW EXECUTE FUNCTION fail_on_match_2();
+    `);
+
     mockResponses["/players/test-player-1111/history?game=cs2&limit=100&offset=0"] = (req, res, send) => {
-      send(200, { items: [createMatch("fail-1", 1700005000), createMatch("fail-2", 1700004000)] });
-    };
-    mockResponses["/matches/fail-2/stats"] = (req, res, send) => {
-      send(500, { error: "Server exploded" });
+      send(200, { items: [createMatch("db-fail-1", 1700005000), createMatch("db-fail-2", 1700004000)] });
     };
 
     await assert.rejects(
-      async () => importCareer({ maxPages: 1, delayMs: 10 }),
-      /Failed fetching stats for match fail-2/
+      async () => importCareer({ maxPages: 1, delayMs: 1 }),
+      /Simulated database failure mid-transaction/
     );
 
-    // Verify neither match was saved in DB
-    const dbMatchesRollback = (await pool.query("SELECT * FROM faceit_matches")).rows;
-    assert.strictEqual(dbMatchesRollback.length, 0, "No matches should be saved if page transaction failed");
+    // Verify Match 1 was rolled back and is NOT present in faceit_matches
+    const dbRollbackMatches = (await pool.query("SELECT * FROM faceit_matches")).rows;
+    assert.strictEqual(dbRollbackMatches.length, 0, "Match 1 must be rolled back when transaction fails");
 
-    // Verify cursor was NOT advanced in sync_state
-    const stateRollback = (await pool.query("SELECT value FROM sync_state WHERE key = 'career_import'")).rows[0]?.value;
-    assert.strictEqual(stateRollback, undefined, "Cursor should not be saved on failed transaction");
+    // Verify cursor was NOT advanced or committed in sync_state
+    const dbRollbackState = (await pool.query("SELECT value FROM sync_state WHERE key = 'career_import'")).rows[0]?.value;
+    assert.strictEqual(dbRollbackState, undefined, "Cursor must not be committed when transaction fails");
 
-    // Clean mock
-    delete mockResponses["/matches/fail-2/stats"];
-    console.log("✓ Test 2 & 3 passed");
+    // Drop the test trigger
+    await pool.query("DROP TRIGGER IF EXISTS trg_fail_on_match_2 ON faceit_matches; DROP FUNCTION IF EXISTS fail_on_match_2;");
+    console.log("✓ Test 2 passed");
 
     // -------------------------------------------------------------
-    // Test 4: Successful resume after interruption
+    // Test 3: Successful resume after interruption across separate invocations
     // -------------------------------------------------------------
-    console.log("Test 4: Successful resume after interruption");
+    console.log("Test 3: Successful resume after interruption across separate invocations");
     await resetDatabase();
 
-    // Page 1: Provide full page (100 items) so state.done is not set prematurely
+    // Page 1: 100 items
     const fullP1 = Array.from({ length: 100 }, (_, i) => createMatch(`res-p1-${i}`, 1700100000 - i * 100));
     const oldestP1 = Number(fullP1[99].started_at || fullP1[99].finished_at);
 
@@ -187,31 +205,31 @@ async function runTests() {
       send(200, { items: fullP1 });
     };
 
-    // Page 2
+    // Page 2: 100 items starting from oldestP1
     const fullP2 = Array.from({ length: 100 }, (_, i) => createMatch(`res-p2-${i}`, oldestP1 - i * 100));
     mockResponses[`/players/test-player-1111/history?game=cs2&limit=100&to=${oldestP1}`] = (req, res, send) => {
       send(200, { items: fullP2 });
     };
 
-    // Run first page
+    // Invocation 1: import page 1
     const rRun1 = await importCareer({ maxPages: 1, delayMs: 1 });
     assert.strictEqual(rRun1.saved, 100);
     assert.strictEqual(rRun1.state.done, false);
     assert.strictEqual(rRun1.state.cursor, oldestP1);
 
-    // Run resume (page 2)
+    // Invocation 2: resumes from cursor, imports page 2
     const rRun2 = await importCareer({ maxPages: 1, delayMs: 1 });
     assert.strictEqual(rRun2.saved, 100);
     assert.strictEqual(rRun2.state.imported, 200);
 
     const totalRes = (await pool.query("SELECT COUNT(*)::int AS cnt FROM faceit_matches")).rows[0].cnt;
     assert.strictEqual(totalRes, 200, "All 200 matches from both pages must be saved");
-    console.log("✓ Test 4 passed");
+    console.log("✓ Test 3 passed");
 
     // -------------------------------------------------------------
-    // Test 5 & 6: Duplicate handling, overlapping pages, timestamp ties
+    // Test 4 & 5: Duplicate handling, overlapping pages, timestamp ties
     // -------------------------------------------------------------
-    console.log("Test 5 & 6: Duplicate handling across overlapping pages & timestamp ties");
+    console.log("Test 4 & 5: Duplicate handling, overlapping pages & timestamp ties");
     await resetDatabase();
 
     // Page 1: 100 matches ending with match 'tie-2' at 1700002000
@@ -239,12 +257,12 @@ async function runTests() {
 
     const tie3Exists = (await pool.query("SELECT match_id FROM faceit_matches WHERE match_id = 'tie-3'")).rows.length === 1;
     assert.strictEqual(tie3Exists, true, "tie-3 must be saved despite timestamp tie and boundary overlap");
-    console.log("✓ Test 5 & 6 passed");
+    console.log("✓ Test 4 & 5 passed");
 
     // -------------------------------------------------------------
-    // Test 7: HTTP 404 statistics (marked unavailable)
+    // Test 6: HTTP 404 statistics (marked unavailable)
     // -------------------------------------------------------------
-    console.log("Test 7: HTTP 404 statistics (marked 'unavailable')");
+    console.log("Test 6: HTTP 404 statistics (marked 'unavailable')");
     await resetDatabase();
 
     mockResponses["/players/test-player-1111/history?game=cs2&limit=100&offset=0"] = (req, res, send) => {
@@ -254,7 +272,7 @@ async function runTests() {
       send(404, { message: "Match stats not found on FACEIT" });
     };
 
-    const res404 = await importCareer({ maxPages: 1, delayMs: 10 });
+    const res404 = await importCareer({ maxPages: 1, delayMs: 1 });
     assert.strictEqual(res404.ok, true);
     assert.strictEqual(res404.saved, 1);
 
@@ -262,12 +280,90 @@ async function runTests() {
     assert.strictEqual(row404.stats, null);
     assert.strictEqual(row404.stats_status, "unavailable", "404 stats must be marked unavailable, not pending");
     delete mockResponses["/matches/m-404/stats"];
+    console.log("✓ Test 6 passed");
+
+    // -------------------------------------------------------------
+    // Test 7: HTTP 500 retry and recovery
+    // -------------------------------------------------------------
+    console.log("Test 7: HTTP 500 retry and recovery");
+    await resetDatabase();
+
+    let attempts500 = 0;
+    mockResponses["/players/test-player-1111/history?game=cs2&limit=100&offset=0"] = (req, res, send) => {
+      send(200, { items: [createMatch("m-500", 1700001000)] });
+    };
+    mockResponses["/matches/m-500/stats"] = (req, res, send) => {
+      attempts500++;
+      if (attempts500 === 1) {
+        send(500, { message: "Internal server error on FACEIT stats" });
+        return;
+      }
+      send(200, {
+        rounds: [{
+          round_stats: { Map: "de_nuke" },
+          teams: [
+            {
+              team_stats: { "Final Score": "13" },
+              players: [{ player_id: TEST_PLAYER_ID, nickname: "kiyosei", player_stats: { "K/D Ratio": "1.3" } }]
+            },
+            { team_stats: { "Final Score": "7" }, players: [] }
+          ]
+        }]
+      });
+    };
+
+    const res500 = await importCareer({ maxPages: 1, delayMs: 1 });
+    assert.strictEqual(res500.ok, true);
+    assert.strictEqual(attempts500, 2, "Should retry after 500 and succeed on subsequent attempt");
+    const row500 = (await pool.query("SELECT stats_status FROM faceit_matches WHERE match_id = 'm-500'")).rows[0];
+    assert.strictEqual(row500.stats_status, "available");
+    delete mockResponses["/matches/m-500/stats"];
     console.log("✓ Test 7 passed");
 
     // -------------------------------------------------------------
-    // Test 8: HTTP 429/500/network failure retry & recovery
+    // Test 8: Network failure (socket hang up) retry and recovery
     // -------------------------------------------------------------
-    console.log("Test 8: HTTP 429 recovery via retry");
+    console.log("Test 8: Network failure (socket hang up) retry and recovery");
+    await resetDatabase();
+
+    let attemptsNet = 0;
+    mockResponses["/players/test-player-1111/history?game=cs2&limit=100&offset=0"] = (req, res, send) => {
+      send(200, { items: [createMatch("m-net", 1700001000)] });
+    };
+    mockResponses["/matches/m-net/stats"] = (req, res) => {
+      attemptsNet++;
+      if (attemptsNet === 1) {
+        // Destroy client socket immediately to simulate network disconnection / ECONNRESET
+        req.socket.destroy();
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        rounds: [{
+          round_stats: { Map: "de_vertigo" },
+          teams: [
+            {
+              team_stats: { "Final Score": "13" },
+              players: [{ player_id: TEST_PLAYER_ID, nickname: "kiyosei", player_stats: { "K/D Ratio": "1.4" } }]
+            },
+            { team_stats: { "Final Score": "8" }, players: [] }
+          ]
+        }]
+      }));
+    };
+
+    const resNet = await importCareer({ maxPages: 1, delayMs: 1 });
+    assert.strictEqual(resNet.ok, true);
+    assert.strictEqual(attemptsNet, 2, "Should retry after socket drop and succeed on second attempt");
+    const rowNet = (await pool.query("SELECT stats_status FROM faceit_matches WHERE match_id = 'm-net'")).rows[0];
+    assert.strictEqual(rowNet.stats_status, "available");
+    delete mockResponses["/matches/m-net/stats"];
+    console.log("✓ Test 8 passed");
+
+    // -------------------------------------------------------------
+    // Test 9: HTTP 429 retry and recovery
+    // -------------------------------------------------------------
+    console.log("Test 9: HTTP 429 retry and recovery");
     await resetDatabase();
 
     let attempts429 = 0;
@@ -294,18 +390,18 @@ async function runTests() {
       });
     };
 
-    const res429 = await importCareer({ maxPages: 1, delayMs: 10 });
+    const res429 = await importCareer({ maxPages: 1, delayMs: 1 });
     assert.strictEqual(res429.ok, true);
-    assert.strictEqual(attempts429, 2, "Should have retried after 429 and then succeeded");
+    assert.strictEqual(attempts429, 2, "Should retry after 429 and then succeed");
     const row429 = (await pool.query("SELECT stats_status FROM faceit_matches WHERE match_id = 'm-429'")).rows[0];
     assert.strictEqual(row429.stats_status, "available");
     delete mockResponses["/matches/m-429/stats"];
-    console.log("✓ Test 8 passed");
+    console.log("✓ Test 9 passed");
 
     // -------------------------------------------------------------
-    // Test 9: Backfilling previously imported matches with missing/pending statistics
+    // Test 10: Backfilling previously imported matches with pending statistics
     // -------------------------------------------------------------
-    console.log("Test 9: Backfilling previously imported matches with pending statistics");
+    console.log("Test 10: Backfilling previously imported matches with pending statistics");
     // Insert a pending match directly into DB
     await pool.query(
       `INSERT INTO faceit_matches (match_id, finished_at, map, outcome, stats, stats_status, source)
@@ -331,30 +427,30 @@ async function runTests() {
       });
     };
 
-    const resRepair = await importCareer({ maxPages: 1, delayMs: 10, backfillPending: true });
+    const resRepair = await importCareer({ maxPages: 1, delayMs: 1, backfillPending: true });
     assert.strictEqual(resRepair.repaired, 1, "Should have repaired 1 pending match");
 
     const repairedRow = (await pool.query("SELECT stats_status, stats FROM faceit_matches WHERE match_id = 'm-pending-repair'")).rows[0];
     assert.strictEqual(repairedRow.stats_status, "available");
     assert.notStrictEqual(repairedRow.stats, null);
     delete mockResponses["/matches/m-pending-repair/stats"];
-    console.log("✓ Test 9 passed");
+    console.log("✓ Test 10 passed");
 
     // -------------------------------------------------------------
-    // Test 10: Re-importing completed history without duplicate records or counter inflation
+    // Test 11: Re-importing completed history without duplicate records or counter inflation
     // -------------------------------------------------------------
-    console.log("Test 10: Re-importing completed history without duplicate records");
+    console.log("Test 11: Re-importing completed history without duplicate records");
     const statusBefore = await syncStatus();
     const countBefore = statusBefore.matches.total;
 
     // Run import when state.done is true
-    const resCompleted = await importCareer({ maxPages: 1, delayMs: 10, backfillPending: false });
+    const resCompleted = await importCareer({ maxPages: 1, delayMs: 1, backfillPending: false });
     assert.strictEqual(resCompleted.done, true);
     assert.strictEqual(resCompleted.saved, 0);
 
     const statusAfter = await syncStatus();
     assert.strictEqual(statusAfter.matches.total, countBefore, "Total match count should not change when re-running completed history");
-    console.log("✓ Test 10 passed");
+    console.log("✓ Test 11 passed");
 
     console.log("\n===========================================");
     console.log("ALL POSTGRESQL INTEGRATION TESTS PASSED!");

@@ -102,13 +102,15 @@ async function fetchMatchStatsSafe(matchId, playerId, nickname) {
  *
  * Pagination behavior:
  * - Walks backwards in time using FACEIT's `to` parameter (timestamp).
- * - Since `to` is inclusive on FACEIT, the oldest match of page N can appear as the boundary match.
- * - To prevent infinite loops or skips on boundary overlaps:
- *   - We track seen match IDs across pages (`seenMatchIds`).
- *   - If all items in a fetched page were already seen, history is stuck or exhausted -> break.
- *   - The cursor is updated to the oldest timestamp seen in the page.
- * - Completion is marked ONLY when the API returns an empty items array or fewer than PAGE_SIZE items
- *   and no new matches were found.
+ * - Since `to` is inclusive on FACEIT, the boundary match can repeat on the next page.
+ * - Durable tracking of seen boundary matches and consecutive stalls across resumed runs:
+ *   - `state.seenBoundaryIds`: array of match IDs from recent pages to detect duplicate pages.
+ *   - `state.consecutiveStalls`: count of stalls persisted in sync_state so resumption does not loop.
+ * - Completion rules:
+ *   - An empty page (`items.length === 0`) confirms exhaustion -> `done = true`.
+ *   - A short page (`items.length < PAGE_SIZE`) only marks completion if probe confirmed no new matches,
+ *     or if the oldest timestamp cannot progress and no new matches appeared in the page.
+ *   - Timestamp ties (multiple matches at identical timestamp) do not cause premature completion.
  *
  * Atomicity:
  * - History items and their stats are fetched outside DB transaction.
@@ -129,8 +131,16 @@ async function importCareer({ maxPages = 5, delayMs = 250, backfillPending = tru
         cursor: null,
         pages: 0,
         imported: 0,
-        lastMatchId: null
+        seenBoundaryIds: [],
+        consecutiveStalls: 0
       };
+
+      if (!Array.isArray(state.seenBoundaryIds)) {
+        state.seenBoundaryIds = [];
+      }
+      if (typeof state.consecutiveStalls !== "number") {
+        state.consecutiveStalls = 0;
+      }
 
       if (state.done && !backfillPending) {
         await finishRun(runId, "ok", 0, 0, null);
@@ -154,7 +164,6 @@ async function importCareer({ maxPages = 5, delayMs = 250, backfillPending = tru
             totalRepaired++;
             await sleep(delayMs);
           } catch (err) {
-            // Transient error on repair, stop repair loop for now and continue
             console.warn(`Backfill paused for ${row.match_id}: ${err.message}`);
             break;
           }
@@ -166,8 +175,7 @@ async function importCareer({ maxPages = 5, delayMs = 250, backfillPending = tru
         return { ok: true, done: true, seen: 0, saved: totalSaved, repaired: totalRepaired, state };
       }
 
-      const seenMatchIds = new Set();
-      let consecutiveStallCount = 0;
+      const durableSeen = new Set(state.seenBoundaryIds);
 
       for (let page = 0; page < maxPages; page++) {
         const q = `/players/${player.player_id}/history?game=${GAME}&limit=${PAGE_SIZE}` +
@@ -177,16 +185,17 @@ async function importCareer({ maxPages = 5, delayMs = 250, backfillPending = tru
         const items = history.items || [];
         totalSeen += items.length;
 
+        // Evidence of exhaustion: empty response from API
         if (!items.length) {
           state.done = true;
           await setState("career_import", state);
           break;
         }
 
-        // Check for duplicate/repeated page detection
         const pageItemIds = items.map((i) => i.match_id).filter(Boolean);
-        const newInThisPage = pageItemIds.filter((id) => !seenMatchIds.has(id));
-        pageItemIds.forEach((id) => seenMatchIds.add(id));
+        const newInThisPage = pageItemIds.filter((id) => !durableSeen.has(id));
+        pageItemIds.forEach((id) => durableSeen.add(id));
+        state.seenBoundaryIds = Array.from(durableSeen).slice(-500); // keep recent boundary ids bounded
 
         // Find existing matches in database
         const existingRows = await pool.query(
@@ -195,13 +204,12 @@ async function importCareer({ maxPages = 5, delayMs = 250, backfillPending = tru
         );
         const existingMap = new Map(existingRows.rows.map((r) => [r.match_id, r.stats_status]));
 
-        // Fetch stats for matches outside of DB transaction
+        // Fetch stats for unimported or pending matches outside DB transaction
         const preparedBatch = [];
         for (const item of items) {
           if (!item.match_id) continue;
           const statusInDb = existingMap.get(item.match_id);
 
-          // If match already exists and has available or confirmed unavailable stats, skip fetching
           if (statusInDb === "available" || statusInDb === "unavailable") {
             continue;
           }
@@ -216,8 +224,7 @@ async function importCareer({ maxPages = 5, delayMs = 250, backfillPending = tru
             score = res.score || score;
             statsStatus = res.status;
           } catch (error) {
-            // Transient error (429, 5xx, network failure)
-            // Re-throw so we do not save incomplete/corrupted page
+            // Transient error: do not proceed with committing a broken page
             throw new Error(`Failed fetching stats for match ${item.match_id}: ${error.message}`);
           }
 
@@ -261,7 +268,6 @@ async function importCareer({ maxPages = 5, delayMs = 250, backfillPending = tru
               [match.matchId, match.finishedAt, match.startedAt, match.map,
                match.outcome, match.score, match.stats, match.statsStatus]
             );
-            // Count as newly saved if inserted
             if (r.rowCount > 0 && !existingMap.has(match.matchId)) {
               pageSavedCount++;
             }
@@ -275,23 +281,26 @@ async function importCareer({ maxPages = 5, delayMs = 250, backfillPending = tru
           if (oldestTimestamp === null) {
             state.done = true;
           } else if (state.cursor && oldestTimestamp >= Number(state.cursor)) {
-            // The oldest timestamp did not move backwards
-            // If all items were already seen, we cannot make backward progress
+            // Oldest timestamp did not move backwards (e.g. boundary repeat or timestamp tie)
             if (newInThisPage.length === 0) {
-              consecutiveStallCount++;
-              if (consecutiveStallCount >= 2) {
+              state.consecutiveStalls = (state.consecutiveStalls || 0) + 1;
+              if (state.consecutiveStalls >= 2) {
+                // Verified repeated page with zero new matches across invocations -> finished
                 state.done = true;
               }
             } else {
-              consecutiveStallCount = 0;
+              state.consecutiveStalls = 0;
             }
           } else {
-            consecutiveStallCount = 0;
+            state.consecutiveStalls = 0;
             state.cursor = oldestTimestamp;
           }
 
-          // If FACEIT returned fewer than PAGE_SIZE items, history is exhausted
-          if (items.length < PAGE_SIZE) {
+          // If a page returns fewer than PAGE_SIZE items, verify whether any new items were found.
+          // If no new items exist on a short page, history is exhausted.
+          // Otherwise, if new items were found, advance cursor and do not prematurely mark done
+          // unless the subsequent request confirms 0 items or stall.
+          if (items.length < PAGE_SIZE && newInThisPage.length === 0) {
             state.done = true;
           }
 
