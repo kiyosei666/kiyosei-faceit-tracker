@@ -76,6 +76,11 @@
           <section class="glass-card panel-card" id="history">
             <div class="card-head">
               <h2 class="card-title">ELO PROGRESSION</h2>
+              <div class="seg-pills" id="history-range" role="group" aria-label="Filter ELO history">
+                <button type="button" class="pill pill-toggle" data-range="7d" aria-pressed="false">7D</button>
+                <button type="button" class="pill pill-toggle" data-range="30d" aria-pressed="false">30D</button>
+                <button type="button" class="pill pill-toggle active" data-range="all" aria-pressed="true">ALL</button>
+              </div>
               <span id="history-count" class="pill pill-subtle">LOADING</span>
             </div>
             <div id="elo-chart" class="chart-container">
