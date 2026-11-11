@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0b0c">
+  <title>Kiyosei — FACEIT Comeback Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/">K<span>.</span></a>
+      <div class="top-meta"><span class="live-dot"></span><span id="connection">CONNECTING TO FACEIT</span></div>
+    </header>
+
+    <section class="hero">
+      <p class="eyebrow">CS2 COMPETITIVE JOURNEY / 2026</p>
+      <h1>THE COMEBACK<br><span>IS PERSONAL.</span></h1>
+      <div class="profile-line">
+        <div class="avatar" id="avatar">K</div>
+        <div><strong id="nickname">KIYOSEI</strong><small id="profile-meta">FACEIT PLAYER PROFILE</small></div>
+        <a id="faceit-link" class="profile-link" href="https://www.faceit.com/en/players/kiyosei" target="_blank" rel="noreferrer">FACEIT PROFILE ↗</a>
+      </div>
+    </section>
+
+    <section class="elo-panel">
+      <div class="section-head"><span>01 / CURRENT RATING</span><span id="updated">WAITING FOR DATA</span></div>
+      <div class="elo-main">
+        <div><div class="muted-label">CURRENT ELO</div><div class="elo-value" id="elo">----</div></div>
+        <div class="level-block"><div class="muted-label">FACEIT LEVEL</div><div class="level-value" id="level">--</div></div>
+      </div>
+      <div class="progress-head"><span>ROAD TO 2,000 ELO</span><strong id="progress-label">0%</strong></div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="milestones" id="milestones"></div>
+    </section>
+
+    <section class="stats-grid">
+      <article class="stat-card"><span>WIN RATE</span><strong id="winrate">—</strong><small>LIFETIME</small></article>
+      <article class="stat-card"><span>K/D RATIO</span><strong id="kd">—</strong><small>LIFETIME</small></article>
+      <article class="stat-card"><span>HEADSHOT %</span><strong id="hs">—</strong><small>LIFETIME</small></article>
+      <article class="stat-card"><span>MATCHES</span><strong id="matches-count">—</strong><small>RECENT FORM</small></article>
+    </section>
+
+    <section class="matches-panel">
+      <div class="section-head"><span>02 / RECENT MATCHES</span><span>LAST 20</span></div>
+      <div id="matches" class="matches-list"><p class="empty">Waiting for FACEIT connection…</p></div>
+    </section>
+
+    <footer><span>KIYOSEI FACEIT TRACKER</span><span>BUILT FOR THE GRIND.</span></footer>
+    <div id="notice" class="notice" role="status"></div>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
