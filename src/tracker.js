@@ -22,8 +22,18 @@ async function persistMatches(historyItems, playerId, nickname, currentElo) {
     previousElo = BASELINE_ELO;
   }
 
-  const known = await pool.query("SELECT match_id, stats_status FROM faceit_matches");
-  const knownMap = new Map(known.rows.map((row) => [row.match_id, row.stats_status]));
+  const known = await pool.query("SELECT match_id, stats_status, outcome FROM faceit_matches");
+  const knownMap = new Map(known.rows.map((row) => [row.match_id, row]));
+  // Repair previously imported unknown outcomes using FACEIT recent-history results.
+  for (const item of historyItems || []) {
+    const existing = knownMap.get(item.match_id);
+    if (!existing) continue;
+    const outcome = getPlayerOutcome(item, playerId);
+    if ((outcome === "Win" || outcome === "Loss") && existing.outcome !== outcome) {
+      await pool.query("UPDATE faceit_matches SET outcome = $1 WHERE match_id = $2", [outcome, item.match_id]);
+      existing.outcome = outcome;
+    }
+  }
   const newItems = (historyItems || []).filter((item) => item.match_id && !knownMap.has(item.match_id));
   const chronological = [...newItems].reverse();
   let saved = 0;
