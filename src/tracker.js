@@ -84,13 +84,18 @@ async function persistMatches(historyItems, playerId, nickname, currentElo) {
   return { configured: true, saved, firstSync: isFirstSync };
 }
 
-async function readTrackingData() {
-  if (!(await ensureSchema())) return { configured: false, snapshots: [], matches: [] };
+async function readTrackingData(range = "all") {
+  if (!(await ensureSchema())) return { configured: false, snapshots: [], matches: [], baseline: BASELINE_ELO, range };
+  const normalizedRange = String(range || "all").toLowerCase();
+  let snapshotQuery = "SELECT elo, captured_at FROM elo_snapshots";
+  if (normalizedRange === "7d") snapshotQuery += " WHERE captured_at >= NOW() - INTERVAL '7 days'";
+  else if (normalizedRange === "30d") snapshotQuery += " WHERE captured_at >= NOW() - INTERVAL '30 days'";
+  snapshotQuery += " ORDER BY captured_at ASC";
   const [snapshots, matches] = await Promise.all([
-    pool.query("SELECT elo, captured_at FROM elo_snapshots ORDER BY captured_at ASC"),
+    pool.query(snapshotQuery),
     pool.query("SELECT match_id, finished_at, map, outcome, score, stats, stats_status, elo_before, elo_after, elo_change FROM faceit_matches ORDER BY finished_at DESC NULLS LAST LIMIT 100")
   ]);
-  return { configured: true, snapshots: snapshots.rows, matches: matches.rows };
+  return { configured: true, snapshots: snapshots.rows, matches: matches.rows, baseline: BASELINE_ELO, range: normalizedRange };
 }
 
 module.exports = { persistMatches, readTrackingData, BASELINE_ELO, BASELINE_AT };
