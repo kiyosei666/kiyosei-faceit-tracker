@@ -3,63 +3,120 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#090a0c">
+  <meta name="description" content="Kiyosei's FACEIT CS2 comeback tracker: ELO progression, career statistics and match history.">
   <title>Kiyosei – FACEIT comeback tracker</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="preload" href="/fonts/archivo-latin-wdth-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <a class="skip" href="#overview">Skip to content</a>
   <header class="top">
     <div class="wrap bar">
-      <a class="brand" href="/" aria-label="Kiyosei tracker home"><i></i>Kiyosei</a>
-      <nav aria-label="Sections"><a href="#rating">Rating</a><a href="#history">ELO history</a><a href="#matches-panel">Matches</a></nav>
-      <div class="status"><span class="dot" id="dot"></span><span id="connection">Connecting to FACEIT</span></div>
+      <a class="brand" href="#overview" aria-label="Kiyosei tracker, back to top"><i aria-hidden="true"></i>Kiyosei</a>
+      <nav aria-label="Sections">
+        <a href="#overview">Overview</a><a href="#progress">Progression</a><a href="#maps">Maps</a><a href="#matches">Matches</a>
+      </nav>
+      <div class="status" role="status"><span class="dot" id="dot"></span><span id="connection">Connecting to FACEIT</span></div>
     </div>
   </header>
 
   <main class="wrap">
-    <section class="hero" id="rating">
+    <section class="hero" id="overview" aria-labelledby="nickname">
       <div class="id">
-        <div class="avatar" id="avatar"><span>K</span><b class="lvl" id="level-badge">–</b></div>
-        <div><h1 id="nickname">Kiyosei</h1><p id="profile-meta">FACEIT player</p></div>
+        <div class="avatar" id="avatar"><span>K</span></div>
+        <div class="who">
+          <h1 id="nickname">Kiyosei</h1>
+          <p id="profile-meta">FACEIT player</p>
+        </div>
+        <span class="lvl-chip" id="level-chip" hidden>Level <b id="level">–</b></span>
         <a id="faceit-link" class="ext" href="https://www.faceit.com/en/players/kiyosei" target="_blank" rel="noreferrer">View on FACEIT</a>
       </div>
-      <div class="elo-row">
-        <div><p class="lbl">Current ELO</p><div class="elo" id="elo">----</div></div>
-        <div><p class="lbl">Skill level</p><div class="level" id="level">–</div></div>
+
+      <div class="hero-main">
+        <div class="elo-block">
+          <p class="lbl">Current ELO</p>
+          <div class="elo" id="elo">—</div>
+          <p class="since" id="since">Waiting for data</p>
+        </div>
+        <dl class="facts" id="facts">
+          <div><dt>Peak since baseline</dt><dd id="fact-peak">—</dd></div>
+          <div><dt>Current streak</dt><dd id="fact-streak">—</dd></div>
+          <div><dt>Last 10 matches</dt><dd><span class="pips" id="form" aria-label="Recent form"></span></dd></div>
+        </dl>
       </div>
-      <div class="road-head"><span>Road to 2,000 ELO</span><span><strong id="progress-label">0%</strong> <em id="updated">Waiting for data</em></span></div>
-      <div class="road"><div class="fill" id="progress-fill"></div><div id="milestones"></div></div>
+
+      <div class="road" aria-labelledby="road-title">
+        <div class="road-head">
+          <h2 id="road-title">Road to 2,000 ELO</h2>
+          <p><strong id="progress-label">—</strong> <span id="remaining"></span></p>
+        </div>
+        <div class="gauge" id="gauge" role="img" aria-label="Progress from 1,680 to 2,000 ELO"></div>
+        <div class="gauge-scale" id="gauge-scale"></div>
+        <p class="updated" id="updated">Waiting for data</p>
+      </div>
     </section>
 
-    <section class="stats" aria-label="Lifetime statistics">
-      <div class="stat"><p>Win rate</p><strong id="winrate">—</strong><small>Lifetime</small></div>
-      <div class="stat"><p>K/D ratio</p><strong id="kd">—</strong><small>Lifetime average</small></div>
-      <div class="stat"><p>Headshots</p><strong id="hs">—</strong><small>Lifetime average</small></div>
-      <div class="stat"><p>Recent matches</p><strong id="matches-count">—</strong><div class="pips" id="form" aria-label="Recent form"></div></div>
+    <section class="kpis" aria-label="Career and recent form">
+      <div class="kpi-group">
+        <h2>Career</h2>
+        <div class="kpi-grid">
+          <div class="kpi"><p>Win rate</p><strong id="winrate">—</strong><small>Lifetime</small></div>
+          <div class="kpi"><p>K/D ratio</p><strong id="kd">—</strong><small>Lifetime average</small></div>
+          <div class="kpi"><p>Headshots</p><strong id="hs">—</strong><small>Lifetime average</small></div>
+          <div class="kpi"><p>Matches played</p><strong id="played">—</strong><small>Lifetime</small></div>
+        </div>
+      </div>
+      <div class="kpi-group">
+        <h2>Recent form <span id="recent-n" class="sub"></span></h2>
+        <div class="kpi-grid">
+          <div class="kpi"><p>Win rate</p><strong id="r-winrate">—</strong><small id="r-winrate-d"></small></div>
+          <div class="kpi"><p>K/D ratio</p><strong id="r-kd">—</strong><small id="r-kd-d"></small></div>
+          <div class="kpi"><p>ADR</p><strong id="r-adr">—</strong><small>Average damage per round</small></div>
+          <div class="kpi"><p>Headshots</p><strong id="r-hs">—</strong><small id="r-hs-d"></small></div>
+        </div>
+      </div>
     </section>
 
-    <section class="panel" id="history">
-      <div class="ph"><h2>ELO history</h2><span id="history-count">Loading snapshots</span></div>
-      <div id="elo-chart" class="chart"><div class="sk" style="height:180px"></div></div>
+    <section class="panel" id="progress" aria-labelledby="progress-title">
+      <div class="ph">
+        <div><h2 id="progress-title">ELO progression</h2><p class="sub" id="history-count">Loading snapshots</p></div>
+        <div class="seg" role="group" aria-label="Chart range" id="range">
+          <button type="button" data-r="all" aria-pressed="true">All</button>
+          <button type="button" data-r="30" aria-pressed="false">30 days</button>
+          <button type="button" data-r="7" aria-pressed="false">7 days</button>
+        </div>
+      </div>
+      <div id="elo-chart" class="chart"><div class="sk" style="height:220px"></div></div>
       <div id="history-summary" class="sum"></div>
     </section>
 
-    <section class="panel" id="matches-panel">
+    <section class="panel" id="maps" aria-labelledby="maps-title">
       <div class="ph">
-        <h2>Recorded matches</h2>
-        <div class="seg" role="group" aria-label="Filter matches">
-          <button type="button" data-f="all" aria-pressed="true">All</button>
-          <button type="button" data-f="win" aria-pressed="false">Wins</button>
-          <button type="button" data-f="loss" aria-pressed="false">Losses</button>
-        </div>
+        <div><h2 id="maps-title">Map performance</h2><p class="sub" id="maps-sub">Built from your saved matches</p></div>
       </div>
-      <div id="matches" class="matches"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
+      <div id="map-list" class="maps"><div class="sk"></div><div class="sk"></div></div>
     </section>
 
-    <footer class="foot"><span>Kiyosei FACEIT tracker</span><span>Syncs with FACEIT every five minutes</span></footer>
+    <section class="panel" id="matches" aria-labelledby="matches-title">
+      <div class="ph">
+        <div><h2 id="matches-title">Match history</h2><p class="sub" id="matches-sub">Loading matches</p></div>
+        <div class="tools">
+          <label class="sel"><span class="sr">Filter by map</span>
+            <select id="map-filter"><option value="all">All maps</option></select>
+          </label>
+          <div class="seg" role="group" aria-label="Filter matches by result" id="result-filter">
+            <button type="button" data-f="all" aria-pressed="true">All</button>
+            <button type="button" data-f="win" aria-pressed="false">Wins</button>
+            <button type="button" data-f="loss" aria-pressed="false">Losses</button>
+          </div>
+        </div>
+      </div>
+      <div id="match-table" class="mt"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
+      <div class="more"><button type="button" id="more" hidden>Show more matches</button></div>
+    </section>
+
+    <footer class="foot"><span>Kiyosei FACEIT tracker</span><span id="foot-sync">Syncs with FACEIT every five minutes</span></footer>
   </main>
   <div id="notice" class="notice" role="status" aria-live="polite"></div>
   <script src="/app.js"></script>
