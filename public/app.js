@@ -285,15 +285,37 @@ function renderMatches(append = false) {
 // ELO PROGRESSION CHART
 // ==========================================================================
 
-function renderEloHistory(snapshots, range = "all") {
-  const root = $("elo-chart"), sum = $("history-summary");
+function renderHistorySummary(pts, range, allTimePeak, peakSource) {
+  const sum = $("history-summary");
+  const first = pts[0] || null;
+  const latest = pts[pts.length - 1] || null;
+  const values = pts.map((point) => point.v);
+  const trackedPeak = values.length ? Math.max(...values) : null;
+  const progress = first && latest ? latest.v - first.v : null;
+  const periodLabel = range === "all" ? "START OF TRACKING" : "START OF PERIOD";
+  const progressLabel = range === "all" ? "COMEBACK PROGRESS" : "PERIOD PROGRESS";
+  const peakNote = peakSource === "user_reported"
+    ? "HISTORICAL PEAK · PLAYER REPORTED · DATE UNKNOWN"
+    : "HIGHEST ELO IN SAVED RECORDS";
+  sum.innerHTML = `
+    <div>${periodLabel}<strong>${first ? first.v.toLocaleString() : "—"}</strong></div>
+    <div>LATEST SNAPSHOT<strong>${latest ? latest.v.toLocaleString() : "—"}</strong></div>
+    <div>TRACKED PEAK<strong>${trackedPeak === null ? "—" : trackedPeak.toLocaleString()}</strong></div>
+    <div>${progressLabel}<strong class="${progress === null ? "" : progress >= 0 ? "pos" : "neg"}">${progress === null ? "—" : `${progress > 0 ? "+" : ""}${progress.toLocaleString()}`}</strong></div>
+    <div title="${peakNote}">ALL-TIME PEAK<strong>${Number.isFinite(Number(allTimePeak)) && Number(allTimePeak) > 0 ? Number(allTimePeak).toLocaleString() : "—"}</strong></div>
+  `;
+}
+
+function renderEloHistory(snapshots, range = "all", allTimePeak = null, peakSource = null) {
+  const root = $("elo-chart");
   $("history-count").textContent = `${snapshots.length} SNAPSHOT${snapshots.length === 1 ? "" : "S"}`;
-  const pts = snapshots.map((s) => ({ v: Number(s.elo), t: new Date(s.captured_at) })).filter((p) => Number.isFinite(p.v));
+  const pts = snapshots.map((s) => ({ v: Number(s.elo), t: new Date(s.captured_at) }))
+    .filter((p) => Number.isFinite(p.v) && Number.isFinite(p.t.getTime()));
 
   if (!pts.length) {
     const rangeMsg = range === "7d" ? "IN THE LAST 7 DAYS" : range === "30d" ? "IN THE LAST 30 DAYS" : "YET";
     root.innerHTML = `<p class="empty">NO ELO SNAPSHOTS ${rangeMsg}. SNAPSHOTS ARE RECORDED WHEN ELO CHANGES ARE DETECTED.</p>`;
-    sum.innerHTML = "";
+    renderHistorySummary([], range, allTimePeak, peakSource);
     return;
   }
   if (pts.length === 1) {
@@ -302,7 +324,7 @@ function renderEloHistory(snapshots, range = "all") {
       <p style="font-size:1.1rem;margin-bottom:0.5rem"><strong>${single.v.toLocaleString()} ELO</strong> RECORDED ON ${single.t.toLocaleDateString([], { month: "short", day: "numeric" })}</p>
       <p style="color:var(--text-dim);font-size:0.9rem">INSUFFICIENT DATA IN THIS TIME RANGE TO RENDER A TREND LINE. PLAY MORE MATCHES AND YOUR ELO PROGRESSION WILL APPEAR HERE.</p>
     </div>`;
-    sum.innerHTML = `<div>RECORDED<strong>${single.v.toLocaleString()}</strong></div><div>DATE<strong>${single.t.toLocaleDateString([], { month: "short", day: "numeric" })}</strong></div>`;
+    renderHistorySummary(pts, range, allTimePeak, peakSource);
     return;
   }
 
@@ -377,15 +399,7 @@ function renderEloHistory(snapshots, range = "all") {
     tip.style.opacity = 0;
   });
 
-  const first = vals[0], latest = vals[vals.length - 1], change = latest - first;
-  const maxRecorded = Math.max(...vals);
-
-  sum.innerHTML = `
-    <div>START RECORDED<strong>${first.toLocaleString()}</strong></div>
-    <div>LATEST SNAPSHOT<strong>${latest.toLocaleString()}</strong></div>
-    <div>PEAK RECORDED<strong>${maxRecorded.toLocaleString()}</strong></div>
-    <div>NET PROGRESS<strong class="${change >= 0 ? "pos" : "neg"}">${change > 0 ? "+" : ""}${change.toLocaleString()}</strong></div>
-  `;
+  renderHistorySummary(pts, range, allTimePeak, peakSource);
 }
 
 // ==========================================================================
@@ -408,7 +422,7 @@ async function loadHistory(range = historyRange) {
     }
 
     const snapshots = data.snapshots || [];
-    renderEloHistory(snapshots, range);
+    renderEloHistory(snapshots, range, data.peakElo, data.peakEloSource);
 
     recorded = data.matches || [];
     matchOffset = recorded.length;

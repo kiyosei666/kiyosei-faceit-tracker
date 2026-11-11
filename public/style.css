@@ -484,6 +484,14 @@ body {
   text-transform: uppercase;
 }
 
+.history-note {
+  margin: 12px 0 0;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+}
+
 .history-summary-row {
   display: flex;
   gap: 24px;
