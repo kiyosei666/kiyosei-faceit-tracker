@@ -109,21 +109,22 @@
           </section>
         </div>
 
-        <!-- Right Column (Current Form - Last 30 Matches) -->
+        <!-- Right Column (Current Form - Last 7 Days) -->
         <div class="right-col">
           <section class="glass-card panel-card form-panel" id="form-panel">
             <div class="card-head">
               <h2 class="card-title">CURRENT FORM</h2>
-              <span class="pill pill-subtle">LAST 30 MATCHES</span>
+              <span class="pill pill-subtle">LAST 7 DAYS</span>
             </div>
 
             <div class="form-body">
               <div class="form-overview">
                 <div class="form-kd-block">
-                  <span class="form-eyebrow">MATCH RATING · K/D</span>
+                  <span class="form-eyebrow">7-DAY PERFORMANCE · K/D</span>
                   <div class="kda-primary">
                     <span class="kda-big" id="form-kd">—</span>
                     <span class="kda-unit">K/D</span>
+                    <span id="form-tier" class="form-tier pending">AWAITING DATA</span>
                   </div>
                   <div class="form-total-kda">TOTAL K / D / A <strong id="form-kda-vals">— / — / —</strong></div>
                 </div>
@@ -154,11 +155,11 @@
 
               <div class="form-sequence-card">
                 <div class="seq-head">
-                  <span class="stat-lbl">LAST 16 RESULTS</span>
+                  <span class="stat-lbl">PERFORMANCE TIMELINE · LAST 16</span>
                   <span class="seq-count" id="form-streak">—</span>
                 </div>
                 <div class="form-pills-strip" id="form-pips" aria-label="Recent match sequence"></div>
-                <div class="form-sequence-legend"><span><i class="legend-win"></i> WIN</span><span><i class="legend-loss"></i> LOSS</span></div>
+                <div class="form-sequence-legend"><span><i class="legend-bot"></i> BOT</span><span><i class="legend-average"></i> AVERAGE</span><span><i class="legend-prime"></i> PRIME+</span><span><i class="legend-pending"></i> PENDING</span></div>
               </div>
             </div>
           </section>
