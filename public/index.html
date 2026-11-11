@@ -3,62 +3,65 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0b0b0c">
-  <title>Kiyosei — FACEIT Comeback Tracker</title>
+  <meta name="theme-color" content="#000000">
+  <title>Kiyosei – FACEIT comeback tracker</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <main class="shell">
-    <header class="topbar">
-      <a class="brand" href="/">K<span>.</span></a>
-      <div class="top-meta"><span class="live-dot"></span><span id="connection">CONNECTING TO FACEIT</span></div>
-    </header>
+  <header class="top">
+    <div class="wrap bar">
+      <a class="brand" href="/" aria-label="Kiyosei tracker home"><i></i>Kiyosei</a>
+      <nav aria-label="Sections"><a href="#rating">Rating</a><a href="#history">ELO history</a><a href="#matches-panel">Matches</a></nav>
+      <div class="status"><span class="dot" id="dot"></span><span id="connection">Connecting to FACEIT</span></div>
+    </div>
+  </header>
 
-    <section class="hero">
-      <p class="eyebrow">CS2 COMPETITIVE JOURNEY / 2026</p>
-      <h1>THE COMEBACK<br><span>IS PERSONAL.</span></h1>
-      <div class="profile-line">
-        <div class="avatar" id="avatar">K</div>
-        <div><strong id="nickname">KIYOSEI</strong><small id="profile-meta">FACEIT PLAYER PROFILE</small></div>
-        <a id="faceit-link" class="profile-link" href="https://www.faceit.com/en/players/kiyosei" target="_blank" rel="noreferrer">FACEIT PROFILE ↗</a>
+  <main class="wrap">
+    <section class="hero" id="rating">
+      <div class="id">
+        <div class="avatar" id="avatar"><span>K</span><b class="lvl" id="level-badge">–</b></div>
+        <div><h1 id="nickname">Kiyosei</h1><p id="profile-meta">FACEIT player</p></div>
+        <a id="faceit-link" class="ext" href="https://www.faceit.com/en/players/kiyosei" target="_blank" rel="noreferrer">View on FACEIT</a>
       </div>
-    </section>
-
-    <section class="elo-panel">
-      <div class="section-head"><span>01 / CURRENT RATING</span><span id="updated">WAITING FOR DATA</span></div>
-      <div class="elo-main">
-        <div><div class="muted-label">CURRENT ELO</div><div class="elo-value" id="elo">----</div></div>
-        <div class="level-block"><div class="muted-label">FACEIT LEVEL</div><div class="level-value" id="level">--</div></div>
+      <div class="elo-row">
+        <div><p class="lbl">Current ELO</p><div class="elo" id="elo">----</div></div>
+        <div><p class="lbl">Skill level</p><div class="level" id="level">–</div></div>
       </div>
-      <div class="progress-head"><span>ROAD TO 2,000 ELO</span><strong id="progress-label">0%</strong></div>
-      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-      <div class="milestones" id="milestones"></div>
+      <div class="road-head"><span>Road to 2,000 ELO</span><span><strong id="progress-label">0%</strong> <em id="updated">Waiting for data</em></span></div>
+      <div class="road"><div class="fill" id="progress-fill"></div><div id="milestones"></div></div>
     </section>
 
-    <section class="stats-grid">
-      <article class="stat-card"><span>WIN RATE</span><strong id="winrate">—</strong><small>LIFETIME</small></article>
-      <article class="stat-card"><span>K/D RATIO</span><strong id="kd">—</strong><small>LIFETIME</small></article>
-      <article class="stat-card"><span>HEADSHOT %</span><strong id="hs">—</strong><small>LIFETIME</small></article>
-      <article class="stat-card"><span>MATCHES</span><strong id="matches-count">—</strong><small>RECENT FORM</small></article>
+    <section class="stats" aria-label="Lifetime statistics">
+      <div class="stat"><p>Win rate</p><strong id="winrate">—</strong><small>Lifetime</small></div>
+      <div class="stat"><p>K/D ratio</p><strong id="kd">—</strong><small>Lifetime average</small></div>
+      <div class="stat"><p>Headshots</p><strong id="hs">—</strong><small>Lifetime average</small></div>
+      <div class="stat"><p>Recent matches</p><strong id="matches-count">—</strong><div class="pips" id="form" aria-label="Recent form"></div></div>
     </section>
 
-    <section class="history-panel">
-      <div class="section-head"><span>02 / ELO HISTORY</span><span id="history-count">SAVING SNAPSHOTS</span></div>
-      <div id="elo-chart" class="elo-chart"><p class="empty">Your ELO timeline will appear after the first sync.</p></div>
-      <div id="history-summary" class="history-summary"></div>
+    <section class="panel" id="history">
+      <div class="ph"><h2>ELO history</h2><span id="history-count">Loading snapshots</span></div>
+      <div id="elo-chart" class="chart"><div class="sk" style="height:180px"></div></div>
+      <div id="history-summary" class="sum"></div>
     </section>
 
-    <section class="matches-panel">
-      <div class="section-head"><span>03 / RECORDED MATCHES</span><span>LAST 50 SAVED</span></div>
-      <div id="matches" class="matches-list"><p class="empty">Waiting for FACEIT connection…</p></div>
+    <section class="panel" id="matches-panel">
+      <div class="ph">
+        <h2>Recorded matches</h2>
+        <div class="seg" role="group" aria-label="Filter matches">
+          <button type="button" data-f="all" aria-pressed="true">All</button>
+          <button type="button" data-f="win" aria-pressed="false">Wins</button>
+          <button type="button" data-f="loss" aria-pressed="false">Losses</button>
+        </div>
+      </div>
+      <div id="matches" class="matches"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
     </section>
 
-    <footer><span>KIYOSEI FACEIT TRACKER</span><span>BUILT FOR THE GRIND.</span></footer>
-    <div id="notice" class="notice" role="status"></div>
+    <footer class="foot"><span>Kiyosei FACEIT tracker</span><span>Syncs with FACEIT every five minutes</span></footer>
   </main>
+  <div id="notice" class="notice" role="status" aria-live="polite"></div>
   <script src="/app.js"></script>
 </body>
 </html>
