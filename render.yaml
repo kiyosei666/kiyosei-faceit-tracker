@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: kiyosei-faceit-tracker
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: FACEIT_NICKNAME
+        value: kiyosei
+      - key: FACEIT_API_KEY
+        sync: false
