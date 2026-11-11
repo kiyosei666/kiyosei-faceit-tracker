@@ -5,7 +5,8 @@
   "description": "A personal CS2 FACEIT comeback tracker",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node test/retry.test.js"
   },
   "engines": {
     "node": ">=20"

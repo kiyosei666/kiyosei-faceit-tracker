@@ -3,6 +3,8 @@ const path = require("path");
 const { pool, ensureSchema } = require("./src/db");
 const { faceitGet, getPlayerOutcome } = require("./src/faceit");
 const { persistMatches, readTrackingData } = require("./src/tracker");
+const { syncRecent, importCareer, syncStatus } = require("./src/sync");
+const crypto = require("crypto");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -70,6 +72,29 @@ app.get("/api/history", async (_req, res) => {
     console.error("History read failed:", error.message);
     res.status(500).json({ error: "Could not read saved match history." });
   }
+});
+
+
+// Protects write/trigger endpoints. The scheduler sends the shared secret.
+function requireSecret(req, res, next) {
+  const expected = process.env.SYNC_SECRET;
+  if (!expected) return res.status(503).json({ error: "SYNC_SECRET is not configured on the server." });
+  const given = String(req.get("x-sync-secret") || "");
+  const a = crypto.createHash("sha256").update(given).digest();
+  const b = crypto.createHash("sha256").update(expected).digest();
+  if (!crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: "Unauthorized." });
+  next();
+}
+const fail = (res, error) => res.status(error.status || 500).json({ error: error.message || "Request failed." });
+
+app.get("/api/sync/status", async (_req, res) => {
+  try { res.json(await syncStatus()); } catch (e) { fail(res, e); }
+});
+app.post("/api/sync", requireSecret, async (_req, res) => {
+  try { res.json(await syncRecent()); } catch (e) { fail(res, e); }
+});
+app.post("/api/career/import", requireSecret, async (req, res) => {
+  try { res.json(await importCareer({ maxPages: Math.min(Number(req.query.pages) || 5, 20) })); } catch (e) { fail(res, e); }
 });
 
 app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
