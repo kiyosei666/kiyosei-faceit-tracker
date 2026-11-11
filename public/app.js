@@ -203,7 +203,6 @@ function renderCurrentForm(matches) {
     const out = (m.outcome || "").toLowerCase();
     const isWin = out === "win";
     const isLoss = out === "loss";
-    const isKnown = isWin || isLoss;
     const letter = isWin ? "W" : isLoss ? "L" : "?";
     const cls = isWin ? "w" : isLoss ? "l" : "unknown";
     const date = m.finished_at ? new Date(Number(m.finished_at) * 1000).toLocaleDateString([], { month: "short", day: "numeric" }) : "";
