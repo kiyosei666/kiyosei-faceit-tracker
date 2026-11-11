@@ -10,7 +10,7 @@ A personal CS2 FACEIT comeback dashboard for tracking ELO, recent matches, lifet
 ## Local setup
 1. Install Node.js 20 or newer.
 2. Run `npm install`.
-3. Copy `.env.example` to `.env` and add your FACEIT API key.
+3. Create a `.env` file in the project root with `FACEIT_API_KEY=your_key` and `FACEIT_NICKNAME=kiyosei`.
 4. Run `npm start`.
 5. Open http://localhost:3000.
 
