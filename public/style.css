@@ -1228,5 +1228,6 @@ body {
   cursor: pointer;
   transition: border-color .2s ease, color .2s ease;
 }
+.matches-load-more[hidden] { display: none; }
 .matches-load-more:hover { border-color: rgba(255,85,0,.45); color: var(--text-white); }
 .form-pip-pill.unknown { background: rgba(156,163,175,.08); border: 1px solid rgba(156,163,175,.2); color: var(--text-muted); box-shadow: none; }
