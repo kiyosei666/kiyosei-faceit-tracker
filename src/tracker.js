@@ -84,22 +84,25 @@ async function persistMatches(historyItems, playerId, nickname, currentElo) {
   return { configured: true, saved, firstSync: isFirstSync };
 }
 
-async function readTrackingData(range = "all") {
+async function readTrackingData(range = "all", offset = 0, limit = 100) {
   if (!(await ensureSchema())) return { configured: false, snapshots: [], matches: [], baseline: BASELINE_ELO, range };
   const normalizedRange = String(range || "all").toLowerCase();
   let snapshotQuery = "SELECT elo, captured_at FROM elo_snapshots";
   if (normalizedRange === "7d") snapshotQuery += " WHERE captured_at >= NOW() - INTERVAL '7 days'";
   else if (normalizedRange === "30d") snapshotQuery += " WHERE captured_at >= NOW() - INTERVAL '30 days'";
   snapshotQuery += " ORDER BY captured_at ASC";
-  const [snapshotResult, matchResult, chartMatchResult] = await Promise.all([
+  const safeOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
+  const safeLimit = Math.min(200, Math.max(1, Number.parseInt(limit, 10) || 100));
+  const [snapshotResult, matchResult, chartMatchResult, countResult] = await Promise.all([
     pool.query(snapshotQuery),
-    pool.query("SELECT match_id, finished_at, map, outcome, score, stats, stats_status, elo_before, elo_after, elo_change FROM faceit_matches ORDER BY finished_at DESC NULLS LAST LIMIT 100"),
+    pool.query("SELECT match_id, finished_at, map, outcome, score, stats, stats_status, elo_before, elo_after, elo_change FROM faceit_matches ORDER BY finished_at DESC NULLS LAST, match_id DESC LIMIT $1 OFFSET $2", [safeLimit, safeOffset]),
     pool.query(
       `SELECT elo_before, elo_after, started_at, finished_at
        FROM faceit_matches
        WHERE elo_before IS NOT NULL OR elo_after IS NOT NULL
        ORDER BY finished_at ASC NULLS FIRST`
-    )
+    ),
+    pool.query("SELECT COUNT(*)::int AS total FROM faceit_matches")
   ]);
 
   // Include exact per-match ELO values when the tracker could safely attribute
@@ -136,6 +139,10 @@ async function readTrackingData(range = "all") {
     configured: true,
     snapshots: mergedSnapshots,
     matches: matchResult.rows,
+    totalMatches: countResult.rows[0]?.total || 0,
+    matchOffset: safeOffset,
+    matchLimit: safeLimit,
+    hasMoreMatches: safeOffset + matchResult.rows.length < (countResult.rows[0]?.total || 0),
     baseline: BASELINE_ELO,
     range: normalizedRange
   };
