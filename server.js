@@ -1,186 +1,17 @@
 const express = require("express");
 const path = require("path");
-const { Pool } = require("pg");
+const { pool, ensureSchema } = require("./src/db");
+const { faceitGet, getPlayerOutcome } = require("./src/faceit");
+const { persistMatches, readTrackingData } = require("./src/tracker");
+const { syncRecent, importCareer, syncStatus } = require("./src/sync");
+const crypto = require("crypto");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const API_BASE = "https://open.faceit.com/data/v4";
 const PLAYER_NICKNAME = process.env.FACEIT_NICKNAME || "kiyosei";
 const GAME_ID = "cs2";
-const BASELINE_ELO = 1680;
-const BASELINE_AT = "2026-11-11T00:00:00+08:00";
 
 app.use(express.static(path.join(__dirname, "public")));
-
-const pool = process.env.DATABASE_URL
-  ? new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-      max: 5,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000
-    })
-  : null;
-
-if (pool) {
-  pool.on("error", (error) => console.error("Unexpected database pool error:", error.message));
-}
-
-let schemaReady = false;
-
-async function ensureSchema() {
-  if (!pool) return false;
-  if (schemaReady) return true;
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS elo_snapshots (
-      id BIGSERIAL PRIMARY KEY,
-      elo INTEGER NOT NULL,
-      captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE TABLE IF NOT EXISTS faceit_matches (
-      match_id TEXT PRIMARY KEY,
-      finished_at BIGINT,
-      map TEXT,
-      outcome TEXT,
-      score TEXT,
-      stats JSONB,
-      elo_before INTEGER,
-      elo_after INTEGER,
-      elo_change INTEGER,
-      saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  schemaReady = true;
-  return true;
-}
-
-async function faceitGet(endpoint) {
-  if (!process.env.FACEIT_API_KEY) {
-    const error = new Error("FACEIT_API_KEY is not configured on the server.");
-    error.status = 503;
-    throw error;
-  }
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    headers: { Authorization: `Bearer ${process.env.FACEIT_API_KEY}`, Accept: "application/json" }
-  });
-  if (!response.ok) {
-    const message = response.status === 401 ? "FACEIT rejected the API key."
-      : response.status === 403 ? "FACEIT denied access to this API resource."
-      : response.status === 429 ? "FACEIT rate limit reached. Try again shortly."
-      : `FACEIT API returned HTTP ${response.status}.`;
-    const error = new Error(message);
-    error.status = response.status;
-    throw error;
-  }
-  return response.json();
-}
-
-function getPlayerOutcome(match, playerId) {
-  const winner = match.results?.winner;
-  for (const [teamName, team] of Object.entries(match.teams || {})) {
-    if ((team.roster || []).some((member) => member.player_id === playerId)) {
-      return winner ? (winner === teamName ? "Win" : "Loss") : "Unknown";
-    }
-  }
-  return "Unknown";
-}
-
-function getPlayerMatchStats(data, playerId, nickname) {
-  const round = data?.rounds?.[0];
-  if (!round) return { stats: null, map: null, score: null };
-  let found = null;
-  for (const team of round.teams || []) {
-    found = (team.players || []).find((player) =>
-      player.player_id === playerId || player.nickname?.toLowerCase() === nickname.toLowerCase()
-    );
-    if (found) break;
-  }
-  const score = (round.teams || []).map((team) => team.team_stats?.["Final Score"]).filter(Boolean).join("-");
-  return {
-    stats: found?.player_stats || null,
-    map: round.round_stats?.Map || null,
-    score: score || null
-  };
-}
-
-async function persistMatches(historyItems, playerId, nickname, currentElo) {
-  if (!(await ensureSchema())) return { configured: false, saved: 0 };
-  const latestSnapshot = await pool.query(
-    "SELECT elo FROM elo_snapshots ORDER BY captured_at DESC, id DESC LIMIT 1"
-  );
-  let previousElo = latestSnapshot.rows[0]?.elo ?? null;
-  const isFirstSync = previousElo === null;
-
-  if (isFirstSync) {
-    await pool.query(
-      "INSERT INTO elo_snapshots (elo, captured_at) VALUES ($1, $2)",
-      [BASELINE_ELO, BASELINE_AT]
-    );
-    previousElo = BASELINE_ELO;
-  }
-
-  const known = await pool.query("SELECT match_id FROM faceit_matches");
-  const knownIds = new Set(known.rows.map((row) => row.match_id));
-  const newItems = (historyItems || []).filter((item) => item.match_id && !knownIds.has(item.match_id));
-  const chronological = [...newItems].reverse();
-  let saved = 0;
-
-  for (let index = 0; index < chronological.length; index++) {
-    const match = chronological[index];
-    let matchStats = null;
-    let matchMap = match.map || match.competition_name || "FACEIT match";
-    let score = null;
-
-    try {
-      const statsData = await faceitGet(`/matches/${encodeURIComponent(match.match_id)}/stats`);
-      const parsed = getPlayerMatchStats(statsData, playerId, nickname);
-      matchStats = parsed.stats;
-      matchMap = parsed.map || matchMap;
-      score = parsed.score;
-    } catch (error) {
-      console.warn(`Could not fetch stats for match ${match.match_id}: ${error.message}`);
-    }
-
-    // FACEIT's public player-history response does not expose a dependable
-    // per-match ELO delta. Attribute a delta only when exactly one new match
-    // appeared between two known ELO snapshots.
-    const canAttributeElo = !isFirstSync && chronological.length === 1 && Number.isFinite(Number(currentElo));
-    const eloBefore = canAttributeElo ? previousElo : null;
-    const eloAfter = canAttributeElo ? Number(currentElo) : null;
-    const eloChange = canAttributeElo ? Number(currentElo) - previousElo : null;
-
-    await pool.query(
-      `INSERT INTO faceit_matches
-        (match_id, finished_at, map, outcome, score, stats, elo_before, elo_after, elo_change)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       ON CONFLICT (match_id) DO NOTHING`,
-      [match.match_id, match.finished_at || match.started_at || null, matchMap,
-       getPlayerOutcome(match, playerId), score, matchStats ? JSON.stringify(matchStats) : null,
-       eloBefore, eloAfter, eloChange]
-    );
-    saved++;
-  }
-
-  const current = Number(currentElo);
-  if (Number.isFinite(current)) {
-    const last = await pool.query(
-      "SELECT elo FROM elo_snapshots ORDER BY captured_at DESC, id DESC LIMIT 1"
-    );
-    if (!last.rows.length || last.rows[0].elo !== current) {
-      await pool.query("INSERT INTO elo_snapshots (elo) VALUES ($1)", [current]);
-    }
-  }
-  return { configured: true, saved, firstSync: isFirstSync };
-}
-
-async function readTrackingData() {
-  if (!(await ensureSchema())) return { configured: false, snapshots: [], matches: [] };
-  const [snapshots, matches] = await Promise.all([
-    pool.query("SELECT elo, captured_at FROM elo_snapshots ORDER BY captured_at ASC"),
-    pool.query("SELECT match_id, finished_at, map, outcome, score, stats, elo_before, elo_after, elo_change FROM faceit_matches ORDER BY finished_at DESC NULLS LAST LIMIT 50")
-  ]);
-  return { configured: true, snapshots: snapshots.rows, matches: matches.rows };
-}
 
 app.get("/api/health", async (_req, res) => {
   let database = false;
@@ -241,6 +72,29 @@ app.get("/api/history", async (_req, res) => {
     console.error("History read failed:", error.message);
     res.status(500).json({ error: "Could not read saved match history." });
   }
+});
+
+
+// Protects write/trigger endpoints. The scheduler sends the shared secret.
+function requireSecret(req, res, next) {
+  const expected = process.env.SYNC_SECRET;
+  if (!expected) return res.status(503).json({ error: "SYNC_SECRET is not configured on the server." });
+  const given = String(req.get("x-sync-secret") || "");
+  const a = crypto.createHash("sha256").update(given).digest();
+  const b = crypto.createHash("sha256").update(expected).digest();
+  if (!crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: "Unauthorized." });
+  next();
+}
+const fail = (res, error) => res.status(error.status || 500).json({ error: error.message || "Request failed." });
+
+app.get("/api/sync/status", async (_req, res) => {
+  try { res.json(await syncStatus()); } catch (e) { fail(res, e); }
+});
+app.post("/api/sync", requireSecret, async (_req, res) => {
+  try { res.json(await syncRecent()); } catch (e) { fail(res, e); }
+});
+app.post("/api/career/import", requireSecret, async (req, res) => {
+  try { res.json(await importCareer({ maxPages: Math.min(Number(req.query.pages) || 5, 20) })); } catch (e) { fail(res, e); }
 });
 
 app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
