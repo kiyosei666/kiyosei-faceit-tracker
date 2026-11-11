@@ -88,7 +88,7 @@ async function readTrackingData() {
   if (!(await ensureSchema())) return { configured: false, snapshots: [], matches: [] };
   const [snapshots, matches] = await Promise.all([
     pool.query("SELECT elo, captured_at FROM elo_snapshots ORDER BY captured_at ASC"),
-    pool.query("SELECT match_id, finished_at, map, outcome, score, stats, stats_status, elo_before, elo_after, elo_change FROM faceit_matches ORDER BY finished_at DESC NULLS LAST LIMIT 50")
+    pool.query("SELECT match_id, finished_at, map, outcome, score, stats, stats_status, elo_before, elo_after, elo_change FROM faceit_matches ORDER BY finished_at DESC NULLS LAST LIMIT 100")
   ]);
   return { configured: true, snapshots: snapshots.rows, matches: matches.rows };
 }

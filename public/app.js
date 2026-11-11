@@ -1,197 +1,466 @@
 const $ = (id) => document.getElementById(id);
 const BASELINE = 1680, GOAL = 2000, TARGETS = [1800, 1900, 2000];
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const LEVEL_COLORS = [null, "#eeeeee", "#1ce400", "#1ce400", "#ffc800", "#ffc800", "#ffc800", "#ffc800", "#ff6309", "#ff6309", "#fe1f00"];
-let recorded = [], filter = "all", toastTimer;
+
+let recorded = [];
+let filter = "all";
+let toastTimer = null;
+let currentElo = null;
+let peakElo = null;
+let currentPlayer = null;
 
 function stat(stats, ...keys) {
-  for (const key of keys) if (stats && stats[key] !== undefined) return stats[key];
+  for (const key of keys) {
+    if (stats && stats[key] !== undefined && stats[key] !== null) return stats[key];
+  }
   return null;
 }
+
 function number(value, digits = 1) {
   const n = Number(value);
   return Number.isFinite(n) ? n.toFixed(digits) : "—";
 }
+
 function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  return String(value ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
 }
-function toast(message, { error = false, ms = 6000 } = {}) {
+
+function toast(message, { error = false, ms = 5000 } = {}) {
   const el = $("notice");
+  if (!el) return;
   clearTimeout(toastTimer);
-  if (!message) { el.classList.remove("show"); return; }
+  if (!message) {
+    el.classList.remove("show");
+    return;
+  }
   el.textContent = message;
   el.classList.toggle("err", error);
   el.classList.add("show");
   if (ms) toastTimer = setTimeout(() => el.classList.remove("show"), ms);
 }
+
 function countUp(el, to) {
-  if (!Number.isFinite(to)) { el.textContent = "—"; return; }
+  if (!el) return;
+  if (!Number.isFinite(to)) {
+    el.textContent = "—";
+    return;
+  }
   const from = Number(el.dataset.v) || Math.max(0, to - 120);
   el.dataset.v = to;
-  if (REDUCED || from === to) { el.textContent = to.toLocaleString(); return; }
-  const t0 = performance.now(), dur = 1100;
+  if (REDUCED || from === to) {
+    el.textContent = to.toLocaleString();
+    return;
+  }
+  const t0 = performance.now(), dur = 1000;
   (function frame(t) {
     const p = Math.min(1, (t - t0) / dur);
     el.textContent = Math.round(from + (to - from) * (1 - Math.pow(1 - p, 3))).toLocaleString();
     if (p < 1) requestAnimationFrame(frame);
   })(t0);
 }
-const pct = (v) => Math.max(0, Math.min(100, ((v - BASELINE) / (GOAL - BASELINE)) * 100));
 
-function renderRoad(elo) {
-  const progress = pct(elo);
-  requestAnimationFrame(() => { $("progress-fill").style.width = `${progress}%`; });
-  $("progress-label").textContent = `${Math.round(progress)}% from ${BASELINE.toLocaleString()}`;
-  $("milestones").innerHTML = TARGETS.map((t) =>
-    `<i class="mark${elo >= t ? " done" : ""}" style="left:${pct(t)}%"><span>${t.toLocaleString()}${elo >= t ? " ✓" : ""}</span></i>`
-  ).join("");
+// FACEIT Level & Icon Helpers
+function getSkillLevel(elo) {
+  const val = Number(elo);
+  if (!Number.isFinite(val) || val <= 500) return 1;
+  if (val <= 750) return 2;
+  if (val <= 900) return 3;
+  if (val <= 1050) return 4;
+  if (val <= 1200) return 5;
+  if (val <= 1350) return 6;
+  if (val <= 1530) return 7;
+  if (val <= 1750) return 8;
+  if (val <= 2000) return 9;
+  return 10;
 }
-function renderForm(matches) {
-  $("form").innerHTML = matches.slice(0, 10).reverse().map((m) => {
-    const r = (m.outcome || "").toLowerCase();
-    return `<span class="pip ${r === "win" || r === "loss" ? r : ""}" title="${escapeHtml(m.outcome || "Unknown")}"></span>`;
-  }).join("");
+
+function getLevelIcon(level, isChallenger = false) {
+  if (isChallenger || Number(level) >= 11) return "/assets/faceit/challenger.svg";
+  const lvl = Math.max(1, Math.min(10, Math.round(Number(level) || 1)));
+  return `/assets/faceit/${lvl}.svg`;
 }
+
+function getEloNeededText(elo) {
+  const val = Number(elo);
+  if (!Number.isFinite(val)) return "ELO NEEDED: —";
+  const THRESHOLDS = [
+    { lvl: 2, elo: 501 },
+    { lvl: 3, elo: 751 },
+    { lvl: 4, elo: 901 },
+    { lvl: 5, elo: 1051 },
+    { lvl: 6, elo: 1201 },
+    { lvl: 7, elo: 1351 },
+    { lvl: 8, elo: 1531 },
+    { lvl: 9, elo: 1751 },
+    { lvl: 10, elo: 2001 }
+  ];
+  const next = THRESHOLDS.find((t) => val < t.elo);
+  if (next) {
+    const diff = next.elo - val;
+    return `ELO NEEDED +${diff} TO ${next.elo}`;
+  }
+  const nextHundred = (Math.floor(val / 100) + 1) * 100;
+  return `ELO NEEDED +${nextHundred - val} TO ${nextHundred}`;
+}
+
+// ==========================================================================
+// CURRENT FORM – LAST 30 MATCHES CALCULATION
+// ==========================================================================
+
+function renderCurrentForm(matches) {
+  const last30 = matches.slice(0, 30);
+  if (!last30.length) {
+    $("form-kd").textContent = "—";
+    $("form-kda-vals").textContent = "NO SAVED MATCHES";
+    $("form-winrate").textContent = "—%";
+    $("form-record").textContent = "0W - 0L";
+    $("form-adr").textContent = "—";
+    $("form-hs").textContent = "—%";
+    $("form-kda-ratio").textContent = "—";
+    $("form-streak").textContent = "NO DATA";
+    $("form-pips").innerHTML = '<span class="empty">PLAY AND SYNC TO POPULATE FORM</span>';
+    return;
+  }
+
+  let totalKills = 0, totalDeaths = 0, totalAssists = 0;
+  let hasKda = false;
+  let wins = 0, losses = 0;
+  let totalAdr = 0, adrCount = 0;
+  let totalHs = 0, hsCount = 0;
+
+  last30.forEach((m) => {
+    const outcome = (m.outcome || "").toLowerCase();
+    if (outcome === "win") wins++;
+    else if (outcome === "loss") losses++;
+
+    const s = m.stats || {};
+    const k = Number(stat(s, "Kills", "K"));
+    const d = Number(stat(s, "Deaths", "D"));
+    const a = Number(stat(s, "Assists", "A"));
+
+    if (Number.isFinite(k)) { totalKills += k; hasKda = true; }
+    if (Number.isFinite(d)) { totalDeaths += d; hasKda = true; }
+    if (Number.isFinite(a)) { totalAssists += a; hasKda = true; }
+
+    const adr = Number(stat(s, "ADR"));
+    if (Number.isFinite(adr)) { totalAdr += adr; adrCount++; }
+
+    const hs = Number(stat(s, "Headshots %", "Headshots"));
+    if (Number.isFinite(hs)) { totalHs += hs; hsCount++; }
+  });
+
+  // K/D & Total K/D/A
+  if (hasKda) {
+    const kd = totalDeaths > 0 ? (totalKills / totalDeaths).toFixed(2) : totalKills.toFixed(2);
+    $("form-kd").textContent = kd;
+    $("form-kda-vals").textContent = `${totalKills.toLocaleString()} / ${totalDeaths.toLocaleString()} / ${totalAssists.toLocaleString()}`;
+    const kdaRatio = totalDeaths > 0 ? ((totalKills + totalAssists) / totalDeaths).toFixed(2) : "—";
+    $("form-kda-ratio").textContent = kdaRatio;
+  } else {
+    $("form-kd").textContent = "—";
+    $("form-kda-vals").textContent = "SYNCING STATS...";
+    $("form-kda-ratio").textContent = "—";
+  }
+
+  // Win Rate
+  const totalCompleted = wins + losses;
+  const winRate = totalCompleted > 0 ? Math.round((wins / totalCompleted) * 100) : 0;
+  $("form-winrate").textContent = `${winRate}%`;
+  $("form-record").textContent = `${wins}W - ${losses}L (${last30.length} GP)`;
+
+  // ADR & HS
+  $("form-adr").textContent = adrCount > 0 ? (totalAdr / adrCount).toFixed(1) : "—";
+  $("form-hs").textContent = hsCount > 0 ? `${Math.round(totalHs / hsCount)}%` : "—";
+
+  // Streak Calculation (most recent first)
+  let streakCount = 0;
+  let streakType = "";
+  for (const m of last30) {
+    const out = (m.outcome || "").toLowerCase();
+    if (out !== "win" && out !== "loss") continue;
+    if (!streakType) {
+      streakType = out;
+      streakCount = 1;
+    } else if (out === streakType) {
+      streakCount++;
+    } else {
+      break;
+    }
+  }
+  $("form-streak").textContent = streakType
+    ? `STREAK: ${streakCount}${streakType === "win" ? "W" : "L"}`
+    : "STREAK: —";
+
+  // Sequence Pills (last 16 visible, newest first)
+  const pips = last30.slice(0, 16).map((m) => {
+    const out = (m.outcome || "").toLowerCase();
+    const isWin = out === "win";
+    const letter = isWin ? "W" : "L";
+    const cls = isWin ? "w" : "l";
+    const date = m.finished_at ? new Date(Number(m.finished_at) * 1000).toLocaleDateString([], { month: "short", day: "numeric" }) : "";
+    const tooltip = `${m.map || "Match"} · ${m.score || ""} · ${isWin ? "Win" : "Loss"} ${date}`;
+    return `<span class="form-pip-pill ${cls}" title="${escapeHtml(tooltip)}">${letter}</span>`;
+  });
+  $("form-pips").innerHTML = pips.join("");
+}
+
+// ==========================================================================
+// MATCH HISTORY TABLE
+// ==========================================================================
+
 function matchRow(match) {
   const dateValue = match.finished_at || match.date;
   const date = dateValue ? new Date(Number(dateValue) * 1000).toLocaleDateString([], { month: "short", day: "numeric" }) : "Recent";
-  const result = match.outcome || "Unknown";
-  const cls = result.toLowerCase() === "win" ? "win" : result.toLowerCase() === "loss" ? "loss" : "";
+  const result = (match.outcome || "Unknown").toUpperCase();
+  const isWin = result === "WIN";
+  const isLoss = result === "LOSS";
+  const cls = isWin ? "win" : isLoss ? "loss" : "";
+
   const s = match.stats || {};
-  const kd = stat(s, "K/D Ratio", "K/D"), adr = stat(s, "ADR"), hs = stat(s, "Headshots %", "Headshots");
+  const kd = stat(s, "K/D Ratio", "K/D");
+  const adr = stat(s, "ADR");
+  const hs = stat(s, "Headshots %", "Headshots");
   const change = match.elo_change;
-  const elo = change === null || change === undefined ? '<span class="dim elo-chg">–</span>'
-    : `<span class="elo-chg ${Number(change) >= 0 ? "pos" : "neg"}">${Number(change) > 0 ? "+" : ""}${Number(change)}</span>`;
-  return `<div class="mr ${cls}">
-    <span class="res">${escapeHtml(result)}</span>
-    <span class="map">${escapeHtml(match.map || "FACEIT match")}</span>
-    <span class="score">${escapeHtml(match.score || "–")}</span>
-    <div class="st"><span data-l="K/D">${kd !== null ? number(kd, 2) : "–"}</span><span data-l="ADR">${adr !== null ? number(adr, 0) : "–"}</span><span data-l="HS">${hs !== null ? number(hs, 0) + "%" : "–"}</span></div>
-    ${elo}<time>${escapeHtml(date)}</time>
+
+  const eloMarkup = change === null || change === undefined
+    ? '<span class="match-elo-delta" style="color:var(--text-dim)">–</span>'
+    : `<span class="match-elo-delta ${Number(change) >= 0 ? "pos" : "neg"}">${Number(change) > 0 ? "+" : ""}${Number(change)}</span>`;
+
+  return `<div class="match-item">
+    <span class="match-res-pill ${cls}">${escapeHtml(result)}</span>
+    <span class="match-map" title="${escapeHtml(match.map || "FACEIT match")}">${escapeHtml(match.map || "FACEIT MATCH")}</span>
+    <span class="match-score">${escapeHtml(match.score || "–")}</span>
+    <div class="match-kda">
+      <span>${kd !== null ? number(kd, 2) : "–"} KD</span> ·
+      <span>${adr !== null ? number(adr, 0) : "–"} ADR</span> ·
+      <span>${hs !== null ? number(hs, 0) + "%" : "–"} HS</span>
+    </div>
+    ${eloMarkup}
+    <time class="match-time">${escapeHtml(date)}</time>
   </div>`;
 }
+
 function renderMatches() {
   const root = $("matches");
   if (!recorded.length) {
-    root.innerHTML = '<p class="empty">No matches saved yet. Keep this page open while you play and it will save each new match automatically.</p>';
+    root.innerHTML = '<p class="empty">NO MATCHES SAVED YET. THEY WILL SYNC AUTOMATICALLY.</p>';
     return;
   }
   const rows = recorded.filter((m) => filter === "all" || (m.outcome || "").toLowerCase() === filter);
   root.innerHTML = rows.length
-    ? `<div class="mh"><span>Result</span><span>Map</span><span>Score</span><span>K/D</span><span>ADR</span><span>HS</span><span>ELO</span><span style="text-align:right">Date</span></div>${rows.map(matchRow).join("")}`
-    : `<p class="empty">No ${filter === "win" ? "wins" : "losses"} in the saved matches.</p>`;
+    ? rows.map(matchRow).join("")
+    : `<p class="empty">NO ${filter.toUpperCase()} IN RECORDED MATCHES.</p>`;
 }
+
+// ==========================================================================
+// ELO PROGRESSION CHART
+// ==========================================================================
+
 function renderEloHistory(snapshots) {
   const root = $("elo-chart"), sum = $("history-summary");
-  $("history-count").textContent = `${snapshots.length} snapshot${snapshots.length === 1 ? "" : "s"}`;
+  $("history-count").textContent = `${snapshots.length} SNAPSHOT${snapshots.length === 1 ? "" : "S"}`;
   const pts = snapshots.map((s) => ({ v: Number(s.elo), t: new Date(s.captured_at) })).filter((p) => Number.isFinite(p.v));
+
   if (!pts.length) {
-    root.innerHTML = '<p class="empty">No ELO snapshots yet. The first sync saves one automatically.</p>';
+    root.innerHTML = '<p class="empty">NO ELO SNAPSHOTS YET. WAITING FOR FIRST SYNC.</p>';
     sum.innerHTML = "";
     return;
   }
-  const W = 900, H = 300, L = 46, R = 16, T = 14, B = 30;
+
+  const W = 900, H = 260, L = 48, R = 20, T = 20, B = 34;
   const vals = pts.map((p) => p.v);
-  const lo = Math.floor((Math.min(...vals, BASELINE) - 15) / 20) * 20;
-  const hi = Math.ceil((Math.max(...vals, BASELINE) + 15) / 20) * 20;
+  const minVal = Math.min(...vals, BASELINE);
+  const maxVal = Math.max(...vals, BASELINE);
+  const lo = Math.floor((minVal - 20) / 20) * 20;
+  const hi = Math.ceil((maxVal + 20) / 20) * 20;
+
   const x = (i) => pts.length === 1 ? (L + W - R) / 2 : L + (i * (W - L - R)) / (pts.length - 1);
   const y = (v) => T + ((hi - v) / (hi - lo)) * (H - T - B);
   const fmt = (d) => d.toLocaleDateString([], { month: "short", day: "numeric" });
+
   const line = pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(p.v).toFixed(1)}`).join(" ");
   const area = `${line} L${x(pts.length - 1).toFixed(1)} ${H - B} L${x(0).toFixed(1)} ${H - B} Z`;
+
   const ticks = [0, 1, 2, 3, 4].map((k) => Math.round(lo + ((hi - lo) * k) / 4));
-  const grid = ticks.map((v) => `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("");
-  const refs = [`<line class="base" x1="${L}" x2="${W - R}" y1="${y(BASELINE)}" y2="${y(BASELINE)}"/>`]
-    .concat(TARGETS.filter((t) => t > lo && t < hi).map((t) => `<line class="tgt" x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"/>`)).join("");
-  const dots = pts.length <= 30 ? pts.map((p, i) => `<circle class="pt" cx="${x(i)}" cy="${y(p.v)}" r="4"/>`).join("")
-    : `<circle class="pt" cx="${x(pts.length - 1)}" cy="${y(vals[vals.length - 1])}" r="4"/>`;
-  root.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="ELO history chart, ${pts.length} snapshots from ${vals[0]} to ${vals[vals.length - 1]}">
-    <defs><linearGradient id="ga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff5500" stop-opacity=".35"/><stop offset="1" stop-color="#ff5500" stop-opacity="0"/></linearGradient></defs>
-    ${grid}${refs}
-    <path class="area" fill="url(#ga)" d="${area}"/><path class="ln" pathLength="1" d="${line}"/>${dots}
-    <g class="hov" id="hov"><line class="cross" id="cross" y1="${T}" y2="${H - B}"/><circle class="pt" id="hp" r="5.5"/></g>
-    <text class="ax" x="${L}" y="${H - 8}">${fmt(pts[0].t)}</text><text class="ax" x="${W - R}" y="${H - 8}" text-anchor="end">${fmt(pts[pts.length - 1].t)}</text>
-  </svg><div class="tip" id="tip"></div>`;
-  const svg = root.querySelector("svg"), tip = $("tip"), hov = $("hov");
+  const grid = ticks.map((v) => `<line class="chart-grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="chart-axis" x="${L - 10}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("");
+
+  const refs = [`<line class="chart-base" x1="${L}" x2="${W - R}" y1="${y(BASELINE)}" y2="${y(BASELINE)}"/>`]
+    .concat(TARGETS.filter((t) => t > lo && t < hi).map((t) => `<line class="chart-tgt" x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"/>`)).join("");
+
+  const dots = pts.length <= 40
+    ? pts.map((p, i) => `<circle class="chart-pt" cx="${x(i)}" cy="${y(p.v)}" r="4.5"/>`).join("")
+    : `<circle class="chart-pt" cx="${x(pts.length - 1)}" cy="${y(vals[vals.length - 1])}" r="5"/>`;
+
+  root.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="ELO Progression Chart">
+    <defs>
+      <linearGradient id="eloGlowArea" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#ff5500" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="#ff5500" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    ${grid}
+    ${refs}
+    <path class="chart-area" fill="url(#eloGlowArea)" d="${area}"/>
+    <path class="chart-line" pathLength="1" d="${line}"/>
+    ${dots}
+    <g class="chart-hov" id="chart-hov">
+      <line class="chart-crosshair" id="chart-cross" y1="${T}" y2="${H - B}"/>
+      <circle class="chart-pt" id="chart-hp" r="6"/>
+    </g>
+    <text class="chart-axis" x="${L}" y="${H - 10}">${fmt(pts[0].t)}</text>
+    <text class="chart-axis" x="${W - R}" y="${H - 10}" text-anchor="end">${fmt(pts[pts.length - 1].t)}</text>
+  </svg>
+  <div class="chart-tip" id="chart-tip"></div>`;
+
+  const svg = root.querySelector("svg"), tip = $("chart-tip"), hov = $("chart-hov");
   const move = (e) => {
     const rect = svg.getBoundingClientRect();
     const px = ((e.clientX - rect.left) / rect.width) * W;
     let idx = 0, best = Infinity;
     pts.forEach((_, i) => { const d = Math.abs(x(i) - px); if (d < best) { best = d; idx = i; } });
     const p = pts[idx];
-    $("cross").setAttribute("x1", x(idx)); $("cross").setAttribute("x2", x(idx));
-    $("hp").setAttribute("cx", x(idx)); $("hp").setAttribute("cy", y(p.v));
-    tip.innerHTML = `<b>${p.v.toLocaleString()} ELO</b>${p.t.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
+    $("chart-cross").setAttribute("x1", x(idx));
+    $("chart-cross").setAttribute("x2", x(idx));
+    $("chart-hp").setAttribute("cx", x(idx));
+    $("chart-hp").setAttribute("cy", y(p.v));
+
+    tip.innerHTML = `<b>${p.v.toLocaleString()} ELO</b><span>${p.t.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>`;
     tip.style.left = `${(x(idx) / W) * rect.width}px`;
     tip.style.top = `${(y(p.v) / H) * rect.height}px`;
-    hov.style.opacity = 1; tip.style.opacity = 1;
+    hov.style.opacity = 1;
+    tip.style.opacity = 1;
   };
+
   svg.addEventListener("pointermove", move);
   svg.addEventListener("pointerdown", move);
-  svg.addEventListener("pointerleave", () => { hov.style.opacity = 0; tip.style.opacity = 0; });
+  svg.addEventListener("pointerleave", () => {
+    hov.style.opacity = 0;
+    tip.style.opacity = 0;
+  });
+
   const first = vals[0], latest = vals[vals.length - 1], change = latest - first;
-  sum.innerHTML = `<div>First saved<strong>${first.toLocaleString()}</strong></div><div>Latest<strong>${latest.toLocaleString()}</strong></div><div>Peak<strong>${Math.max(...vals).toLocaleString()}</strong></div><div>Change<strong class="${change >= 0 ? "pos" : "neg"}">${change > 0 ? "+" : ""}${change.toLocaleString()}</strong></div>`;
+  const maxRecorded = Math.max(...vals);
+
+  sum.innerHTML = `
+    <div>START RECORDED<strong>${first.toLocaleString()}</strong></div>
+    <div>LATEST SNAPSHOT<strong>${latest.toLocaleString()}</strong></div>
+    <div>PEAK RECORDED<strong>${maxRecorded.toLocaleString()}</strong></div>
+    <div>NET PROGRESS<strong class="${change >= 0 ? "pos" : "neg"}">${change > 0 ? "+" : ""}${change.toLocaleString()}</strong></div>
+  `;
 }
+
+// ==========================================================================
+// API DATA LOADERS
+// ==========================================================================
+
 async function loadHistory() {
   try {
     const response = await fetch("/api/history");
     if (!response.ok) throw new Error("History unavailable");
     const data = await response.json();
+
     if (!data.configured) {
-      $("history-count").textContent = "Database not connected";
-      $("elo-chart").innerHTML = '<p class="empty">Connect a database to save ELO snapshots and match history.</p>';
-      $("matches").innerHTML = '<p class="empty">Match history needs the database connection.</p>';
+      $("history-count").textContent = "NO DATABASE";
+      $("elo-chart").innerHTML = '<p class="empty">CONNECT A DATABASE TO SAVE ELO SNAPSHOTS.</p>';
+      $("matches").innerHTML = '<p class="empty">MATCH HISTORY NEEDS DATABASE CONNECTION.</p>';
+      renderCurrentForm([]);
       return;
     }
-    renderEloHistory(data.snapshots || []);
+
+    const snapshots = data.snapshots || [];
+    renderEloHistory(snapshots);
+
     recorded = data.matches || [];
     renderMatches();
+    renderCurrentForm(recorded);
+
+    // Compute Peak ELO from Supabase DB snapshots & matches
+    const allElo = [
+      ...snapshots.map((s) => Number(s.elo)),
+      ...recorded.map((m) => Number(m.elo_after)),
+      ...recorded.map((m) => Number(m.elo_before)),
+      Number(currentElo)
+    ].filter((v) => Number.isFinite(v) && v > 0);
+
+    peakElo = allElo.length ? Math.max(...allElo) : (currentElo || 2127);
+    countUp($("peak-elo"), peakElo);
+
+    const peakLvl = getSkillLevel(peakElo);
+    $("peak-level-icon").src = getLevelIcon(peakLvl, peakLvl >= 11);
+    $("peak-level-icon").alt = `Level ${peakLvl}`;
+
   } catch (error) {
-    $("history-count").textContent = "History offline";
-    $("elo-chart").innerHTML = '<p class="empty">Could not load saved history. It will retry on the next sync.</p>';
+    $("history-count").textContent = "OFFLINE";
+    $("elo-chart").innerHTML = '<p class="empty">COULD NOT LOAD HISTORY. RETRYING SHORTLY.</p>';
   }
 }
+
 async function load() {
   try {
     const response = await fetch("/api/player");
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Could not load FACEIT profile.");
-    const player = data.player, elo = Number(player.elo), level = Number(player.skillLevel);
-    $("connection").textContent = "FACEIT connected";
+
+    const player = data.player;
+    currentPlayer = player;
+    currentElo = Number(player.elo);
+    const skillLevel = Number(player.skillLevel);
+
+    // Status Indicator
+    $("connection").textContent = "FACEIT CONNECTED";
     $("dot").classList.add("on");
-    $("nickname").textContent = player.nickname || "Kiyosei";
-    $("profile-meta").textContent = player.country ? `FACEIT player · ${player.country.toUpperCase()}` : "FACEIT player";
-    $("faceit-link").href = player.faceitUrl;
-    if (player.avatar) $("avatar").innerHTML = `<img src="${escapeHtml(player.avatar)}" alt="${escapeHtml(player.nickname || "Player")} avatar"><b class="lvl" id="level-badge">–</b>`;
-    document.documentElement.style.setProperty("--lc", LEVEL_COLORS[level] || "var(--orange)");
-    $("level").textContent = Number.isFinite(level) ? level : "—";
-    $("level-badge").textContent = Number.isFinite(level) ? level : "–";
-    countUp($("elo"), elo);
-    renderRoad(Number.isFinite(elo) ? elo : BASELINE);
-    const lifetime = data.lifetime || {};
-    const wr = stat(lifetime, "Win Rate %", "Win Rate"), hs = stat(lifetime, "Average Headshots %", "Headshots");
-    $("winrate").textContent = wr !== null ? `${number(wr)}%` : "—";
-    $("kd").textContent = number(stat(lifetime, "Average K/D Ratio", "K/D Ratio"), 2);
-    $("hs").textContent = hs !== null ? `${number(hs)}%` : "—";
-    $("matches-count").textContent = data.matches.length;
-    renderForm(data.matches);
-    $("updated").textContent = `· Updated ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-    if (!data.tracking?.configured) toast("Database not connected. Showing the live profile only.", { ms: 8000 });
-    else if (data.tracking.saved) toast(`Saved ${data.tracking.saved} new match${data.tracking.saved === 1 ? "" : "es"}`);
-    else toast("");
+
+    // Profile Details
+    $("nickname").textContent = (player.nickname || "KIYOSEI").toUpperCase();
+    if (player.faceitUrl) $("faceit-link").href = player.faceitUrl;
+
+    // Avatar Priority: Live FACEIT Profile Avatar, fallback to extracted anime avatar
+    const avatarImg = $("avatar-img");
+    if (player.avatar) {
+      avatarImg.src = player.avatar;
+    } else {
+      avatarImg.src = "/assets/avatar-fallback.jpg";
+    }
+
+    // Current ELO & Level Icon
+    countUp($("current-elo"), currentElo);
+    const currLvl = Number.isFinite(skillLevel) ? skillLevel : getSkillLevel(currentElo);
+    $("current-level-icon").src = getLevelIcon(currLvl, currLvl >= 11);
+    $("current-level-icon").alt = `Level ${currLvl}`;
+
+    // ELO Needed Pill
+    $("elo-needed-text").textContent = getEloNeededText(currentElo);
+
+    // Sync Timestamp
+    $("updated").textContent = `SYNCED ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }).toUpperCase()}`;
+
+    // Load History & Form from DB
     await loadHistory();
+
   } catch (error) {
-    $("connection").textContent = "Not connected";
+    $("connection").textContent = "NOT CONNECTED";
     $("dot").classList.remove("on");
-    toast(error.message, { error: true, ms: 0 });
-    $("matches").innerHTML = '<p class="empty">Could not load FACEIT data. Check the server configuration and API key.</p>';
-    $("elo-chart").innerHTML = '<p class="empty">Could not load FACEIT data.</p>';
+    toast(error.message, { error: true, ms: 7000 });
+    $("matches").innerHTML = '<p class="empty">COULD NOT LOAD FACEIT DATA. CHECK SERVER API KEY.</p>';
+    $("elo-chart").innerHTML = '<p class="empty">COULD NOT LOAD FACEIT DATA.</p>';
+    renderCurrentForm([]);
   }
 }
-document.querySelectorAll(".seg button").forEach((btn) => btn.addEventListener("click", () => {
-  filter = btn.dataset.f;
-  document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", b === btn));
-  renderMatches();
-}));
+
+// Filter buttons
+document.querySelectorAll(".seg-pills button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    filter = btn.dataset.f;
+    document.querySelectorAll(".seg-pills button").forEach((b) => {
+      b.classList.toggle("active", b === btn);
+      b.setAttribute("aria-pressed", b === btn);
+    });
+    renderMatches();
+  });
+});
+
+// Initial load & 5 minute periodic sync
 load();
 setInterval(load, 5 * 60 * 1000);

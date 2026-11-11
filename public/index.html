@@ -3,65 +3,175 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#000000">
-  <title>Kiyosei – FACEIT comeback tracker</title>
+  <meta name="theme-color" content="#080809">
+  <title>KIYOSEI – FACEIT TRACKER</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <header class="top">
-    <div class="wrap bar">
-      <a class="brand" href="/" aria-label="Kiyosei tracker home"><i></i>Kiyosei</a>
-      <nav aria-label="Sections"><a href="#rating">Rating</a><a href="#history">ELO history</a><a href="#matches-panel">Matches</a></nav>
-      <div class="status"><span class="dot" id="dot"></span><span id="connection">Connecting to FACEIT</span></div>
-    </div>
-  </header>
+  <div class="glow-bg"></div>
 
-  <main class="wrap">
-    <section class="hero" id="rating">
-      <div class="id">
-        <div class="avatar" id="avatar"><span>K</span><b class="lvl" id="level-badge">–</b></div>
-        <div><h1 id="nickname">Kiyosei</h1><p id="profile-meta">FACEIT player</p></div>
-        <a id="faceit-link" class="ext" href="https://www.faceit.com/en/players/kiyosei" target="_blank" rel="noreferrer">View on FACEIT</a>
+  <div class="dashboard-viewport">
+    <!-- Top System Bar -->
+    <header class="top-bar">
+      <div class="top-bar-left">
+        <span class="pill pill-status" id="connection-pill">
+          <span class="dot" id="dot"></span>
+          <span id="connection">CONNECTING TO FACEIT</span>
+        </span>
       </div>
-      <div class="elo-row">
-        <div><p class="lbl">Current ELO</p><div class="elo" id="elo">----</div></div>
-        <div><p class="lbl">Skill level</p><div class="level" id="level">–</div></div>
+      <div class="top-bar-right">
+        <span class="pill pill-subtle" id="updated">SYNCING</span>
       </div>
-      <div class="road-head"><span>Road to 2,000 ELO</span><span><strong id="progress-label">0%</strong> <em id="updated">Waiting for data</em></span></div>
-      <div class="road"><div class="fill" id="progress-fill"></div><div id="milestones"></div></div>
-    </section>
+    </header>
 
-    <section class="stats" aria-label="Lifetime statistics">
-      <div class="stat"><p>Win rate</p><strong id="winrate">—</strong><small>Lifetime</small></div>
-      <div class="stat"><p>K/D ratio</p><strong id="kd">—</strong><small>Lifetime average</small></div>
-      <div class="stat"><p>Headshots</p><strong id="hs">—</strong><small>Lifetime average</small></div>
-      <div class="stat"><p>Recent matches</p><strong id="matches-count">—</strong><div class="pips" id="form" aria-label="Recent form"></div></div>
-    </section>
+    <!-- Main Outer Glass Shell -->
+    <main class="dashboard-shell">
+      <!-- Profile Header Glass Card -->
+      <section class="glass-card header-card" id="rating">
+        <div class="header-main">
+          <div class="avatar-frame" id="avatar-frame">
+            <img id="avatar-img" src="/assets/avatar-fallback.jpg" alt="Player Avatar" onerror="this.onerror=null; this.src='/assets/avatar-fallback.jpg';">
+          </div>
 
-    <section class="panel" id="history">
-      <div class="ph"><h2>ELO history</h2><span id="history-count">Loading snapshots</span></div>
-      <div id="elo-chart" class="chart"><div class="sk" style="height:180px"></div></div>
-      <div id="history-summary" class="sum"></div>
-    </section>
+          <div class="player-info">
+            <h1 class="player-name" id="nickname">KIYOSEI</h1>
+            <div class="stats-pills-row">
+              <div class="pill pill-stat" id="peak-pill" title="Peak Recorded ELO">
+                <img id="peak-level-icon" class="faceit-level-icon" src="/assets/faceit/10.svg" alt="Level">
+                <span class="stat-tag">PEAK:</span>
+                <span class="stat-val" id="peak-elo">2,127</span>
+              </div>
 
-    <section class="panel" id="matches-panel">
-      <div class="ph">
-        <h2>Recorded matches</h2>
-        <div class="seg" role="group" aria-label="Filter matches">
-          <button type="button" data-f="all" aria-pressed="true">All</button>
-          <button type="button" data-f="win" aria-pressed="false">Wins</button>
-          <button type="button" data-f="loss" aria-pressed="false">Losses</button>
+              <div class="pill pill-stat" id="current-pill" title="Current FACEIT ELO">
+                <img id="current-level-icon" class="faceit-level-icon" src="/assets/faceit/9.svg" alt="Level">
+                <span class="stat-tag">CURRENT:</span>
+                <span class="stat-val" id="current-elo">1,927</span>
+              </div>
+
+              <div class="pill pill-stat pill-needed" id="elo-needed-pill">
+                <span class="stat-needed" id="elo-needed-text">ELO NEEDED +74 TO 2001</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <div class="faceit-brand">
+            <img src="/assets/faceit/faceit-logo.svg" alt="FACEIT Logo" class="faceit-chevron">
+          </div>
+          <a id="faceit-link" class="pill pill-button view-profile-btn" href="https://www.faceit.com/en/players/kiyosei" target="_blank" rel="noreferrer">
+            VIEW PROFILE
+          </a>
+        </div>
+      </section>
+
+      <!-- 2-Column Dashboard Grid -->
+      <div class="dashboard-grid">
+        <!-- Left Column (ELO Progression + Match History) -->
+        <div class="left-col">
+          <!-- ELO Progression Card -->
+          <section class="glass-card panel-card" id="history">
+            <div class="card-head">
+              <h2 class="card-title">ELO PROGRESSION</h2>
+              <span id="history-count" class="pill pill-subtle">LOADING</span>
+            </div>
+            <div id="elo-chart" class="chart-container">
+              <div class="sk-chart"></div>
+            </div>
+            <div id="history-summary" class="history-summary-row"></div>
+          </section>
+
+          <!-- Match History Card -->
+          <section class="glass-card panel-card" id="matches-panel">
+            <div class="card-head">
+              <h2 class="card-title">MATCH HISTORY</h2>
+              <div class="seg-pills" role="group" aria-label="Filter matches">
+                <button type="button" class="pill pill-toggle active" data-f="all" aria-pressed="true">ALL</button>
+                <button type="button" class="pill pill-toggle" data-f="win" aria-pressed="false">WINS</button>
+                <button type="button" class="pill pill-toggle" data-f="loss" aria-pressed="false">LOSSES</button>
+              </div>
+            </div>
+            <div id="matches" class="matches-list">
+              <div class="sk-row"></div>
+              <div class="sk-row"></div>
+              <div class="sk-row"></div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Right Column (Current Form - Last 30 Matches) -->
+        <div class="right-col">
+          <section class="glass-card panel-card form-panel" id="form-panel">
+            <div class="card-head">
+              <h2 class="card-title">CURRENT FORM</h2>
+              <span class="pill pill-subtle">LAST 30 MATCHES</span>
+            </div>
+
+            <div class="form-body">
+              <!-- Hero K/D & Total K/D/A -->
+              <div class="form-hero-card">
+                <div class="kda-label-badge">PERFORMANCE RATIO</div>
+                <div class="kda-primary">
+                  <span class="kda-big" id="form-kd">—</span>
+                  <span class="kda-unit">K/D</span>
+                </div>
+                <div class="pill pill-kda-total" id="form-kda-total">
+                  TOTAL K/D/A: <span class="kda-highlight" id="form-kda-vals">— / — / —</span>
+                </div>
+              </div>
+
+              <!-- Form Metrics 2x2 Grid -->
+              <div class="form-stats-grid">
+                <div class="form-stat-tile">
+                  <span class="stat-lbl">WIN RATE</span>
+                  <strong class="stat-num" id="form-winrate">—%</strong>
+                  <span class="stat-sub" id="form-record">0W - 0L</span>
+                </div>
+
+                <div class="form-stat-tile">
+                  <span class="stat-lbl">AVG ADR</span>
+                  <strong class="stat-num" id="form-adr">—</strong>
+                  <span class="stat-sub">DAMAGE / RND</span>
+                </div>
+
+                <div class="form-stat-tile">
+                  <span class="stat-lbl">HEADSHOTS</span>
+                  <strong class="stat-num" id="form-hs">—%</strong>
+                  <span class="stat-sub">PRECISION</span>
+                </div>
+
+                <div class="form-stat-tile">
+                  <span class="stat-lbl">KDA RATIO</span>
+                  <strong class="stat-num" id="form-kda-ratio">—</strong>
+                  <span class="stat-sub">(K + A) / D</span>
+                </div>
+              </div>
+
+              <!-- Match Sequence Pills -->
+              <div class="form-sequence-card">
+                <div class="seq-head">
+                  <span class="stat-lbl">RECENT FORM SEQUENCE</span>
+                  <span class="seq-count" id="form-streak">—</span>
+                </div>
+                <div class="form-pills-strip" id="form-pips" aria-label="Recent match sequence"></div>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
-      <div id="matches" class="matches"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
-    </section>
 
-    <footer class="foot"><span>Kiyosei FACEIT tracker</span><span>Syncs with FACEIT every five minutes</span></footer>
-  </main>
-  <div id="notice" class="notice" role="status" aria-live="polite"></div>
+      <!-- Minimal Dashboard Footer -->
+      <footer class="dashboard-footer">
+        <span>KIYOSEI FACEIT TRACKER · CS2</span>
+        <span>SYNCS AUTOMATICALLY WITH FACEIT</span>
+      </footer>
+    </main>
+  </div>
+
+  <div id="notice" class="notice-toast" role="status" aria-live="polite"></div>
   <script src="/app.js"></script>
 </body>
 </html>
