@@ -1,5 +1,5 @@
 const { pool, ensureSchema } = require("./db");
-const { faceitGet, getPlayerOutcome, getPlayerMatchStats } = require("./faceit");
+const { faceitGet, getPlayerOutcome, getPlayerMatchStats, classifyMatchStats } = require("./faceit");
 const { persistMatches } = require("./tracker");
 
 const NICKNAME = () => process.env.FACEIT_NICKNAME || "kiyosei";
@@ -87,28 +87,9 @@ async function fetchMatchStatsSafe(matchId, playerId, nickname) {
   try {
     const statsData = await faceitGet(`/matches/${encodeURIComponent(matchId)}/stats`);
     const parsed = getPlayerMatchStats(statsData, playerId, nickname);
-    if (parsed.stats) {
-      return {
-        stats: parsed.stats,
-        map: parsed.map,
-        score: parsed.score,
-        status: "available"
-      };
-    }
-    // HTTP 200 succeeded, but player stats were not found or payload structure was incomplete/missing.
-    // Classify as 'pending' so that backfill / retries can re-attempt.
-    return {
-      stats: null,
-      map: parsed.map,
-      score: parsed.score,
-      status: "pending"
-    };
+    return classifyMatchStats(parsed);
   } catch (error) {
-    if (error.status === 404) {
-      return { stats: null, map: null, score: null, status: "unavailable" };
-    }
-    // Transient error (429, 5xx, timeout, network failure)
-    throw error;
+    return classifyMatchStats(null, error);
   }
 }
 
@@ -163,24 +144,32 @@ async function importCareer({ maxPages = 5, delayMs = 250, backfillPending = tru
       }
 
       // Step A: Backfill any existing pending stats matches (if requested and present)
+      // Uses deterministic ordering to avoid starvation and processes each match independently.
+      // Transient failures on one match do NOT stop other pending matches from being attempted.
       if (backfillPending) {
         const pendingRows = await pool.query(
-          "SELECT match_id, map, score FROM faceit_matches WHERE stats_status = 'pending' LIMIT 50"
+          `SELECT match_id, map, score FROM faceit_matches
+           WHERE stats_status = 'pending'
+           ORDER BY finished_at DESC NULLS LAST, match_id ASC
+           LIMIT 50`
         );
         for (const row of pendingRows.rows) {
           try {
             const res = await fetchMatchStatsSafe(row.match_id, player.player_id, nickname);
-            await pool.query(
-              `UPDATE faceit_matches
-               SET stats = $1, stats_status = $2, map = COALESCE($3, map), score = COALESCE($4, score)
-               WHERE match_id = $5`,
-              [res.stats ? JSON.stringify(res.stats) : null, res.status, res.map, res.score, row.match_id]
-            );
-            totalRepaired++;
+            // If successfully fetched as available or confirmed unavailable, update DB
+            if (res.status === "available" || res.status === "unavailable") {
+              await pool.query(
+                `UPDATE faceit_matches
+                 SET stats = $1, stats_status = $2, map = COALESCE($3, map), score = COALESCE($4, score)
+                 WHERE match_id = $5`,
+                [res.stats ? JSON.stringify(res.stats) : null, res.status, res.map, res.score, row.match_id]
+              );
+              totalRepaired++;
+            }
             await sleep(delayMs);
           } catch (err) {
-            console.warn(`Backfill paused for ${row.match_id}: ${err.message}`);
-            break;
+            // Transient failure on this specific match: log warning and continue to next pending match
+            console.warn(`Backfill skipped temporarily for match ${row.match_id}: ${err.message}`);
           }
         }
       }
