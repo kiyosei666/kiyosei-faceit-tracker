@@ -13,8 +13,19 @@ const BASELINE_AT = "2026-11-11T00:00:00+08:00";
 app.use(express.static(path.join(__dirname, "public")));
 
 const pool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL })
+  ? new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 5,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000
+    })
   : null;
+
+if (pool) {
+  pool.on("error", (error) => console.error("Unexpected database pool error:", error.message));
+}
+
 let schemaReady = false;
 
 async function ensureSchema() {
@@ -95,7 +106,7 @@ function getPlayerMatchStats(data, playerId, nickname) {
 async function persistMatches(historyItems, playerId, nickname, currentElo) {
   if (!(await ensureSchema())) return { configured: false, saved: 0 };
   const latestSnapshot = await pool.query(
-    "SELECT elo, captured_at FROM elo_snapshots ORDER BY captured_at DESC, id DESC LIMIT 1"
+    "SELECT elo FROM elo_snapshots ORDER BY captured_at DESC, id DESC LIMIT 1"
   );
   let previousElo = latestSnapshot.rows[0]?.elo ?? null;
   const isFirstSync = previousElo === null;
@@ -108,8 +119,8 @@ async function persistMatches(historyItems, playerId, nickname, currentElo) {
     previousElo = BASELINE_ELO;
   }
 
-  const existing = await pool.query("SELECT match_id FROM faceit_matches");
-  const knownIds = new Set(existing.rows.map((row) => row.match_id));
+  const known = await pool.query("SELECT match_id FROM faceit_matches");
+  const knownIds = new Set(known.rows.map((row) => row.match_id));
   const newItems = (historyItems || []).filter((item) => item.match_id && !knownIds.has(item.match_id));
   const chronological = [...newItems].reverse();
   let saved = 0;
@@ -119,6 +130,7 @@ async function persistMatches(historyItems, playerId, nickname, currentElo) {
     let matchStats = null;
     let matchMap = match.map || match.competition_name || "FACEIT match";
     let score = null;
+
     try {
       const statsData = await faceitGet(`/matches/${encodeURIComponent(match.match_id)}/stats`);
       const parsed = getPlayerMatchStats(statsData, playerId, nickname);
@@ -129,6 +141,9 @@ async function persistMatches(historyItems, playerId, nickname, currentElo) {
       console.warn(`Could not fetch stats for match ${match.match_id}: ${error.message}`);
     }
 
+    // FACEIT's public player-history response does not expose a dependable
+    // per-match ELO delta. Attribute a delta only when exactly one new match
+    // appeared between two known ELO snapshots.
     const canAttributeElo = !isFirstSync && chronological.length === 1 && Number.isFinite(Number(currentElo));
     const eloBefore = canAttributeElo ? previousElo : null;
     const eloAfter = canAttributeElo ? Number(currentElo) : null;
@@ -169,8 +184,20 @@ async function readTrackingData() {
 
 app.get("/api/health", async (_req, res) => {
   let database = false;
-  try { database = await ensureSchema(); } catch (error) { console.error("Database health check:", error.message); }
-  res.json({ ok: true, configured: Boolean(process.env.FACEIT_API_KEY), databaseConfigured: database });
+  let databaseError = null;
+  try {
+    database = await ensureSchema();
+    if (database) await pool.query("SELECT 1");
+  } catch (error) {
+    databaseError = error.message;
+    console.error("Database health check:", error.message);
+  }
+  res.json({
+    ok: true,
+    configured: Boolean(process.env.FACEIT_API_KEY),
+    databaseConfigured: database,
+    ...(databaseError ? { databaseError } : {})
+  });
 });
 
 app.get("/api/player", async (_req, res) => {
