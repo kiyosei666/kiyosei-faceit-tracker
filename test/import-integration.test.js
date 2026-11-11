@@ -27,6 +27,7 @@ process.env.FACEIT_API_BASE = "http://localhost:4030";
 
 const { pool, runMigrations } = require("../src/db");
 const { importCareer, syncStatus } = require("../src/sync");
+const { persistMatches } = require("../src/tracker");
 
 const TEST_PLAYER_ID = "test-player-1111";
 let mockServer = null;
@@ -283,6 +284,56 @@ async function runTests() {
     console.log("✓ Test 6 passed");
 
     // -------------------------------------------------------------
+    // Test 6b: HTTP 200 with missing rounds, missing player, or unexpected structure
+    // Must NOT be marked 'unavailable'; must be marked 'pending' to preserve retryability.
+    // -------------------------------------------------------------
+    console.log("Test 6b: Incomplete HTTP 200 payloads marked 'pending'");
+    await resetDatabase();
+
+    // m-no-rounds: rounds is empty array []
+    // m-no-player: rounds has teams/players but test player is missing
+    // m-malformed: response is {} or unexpected structure
+    mockResponses["/players/test-player-1111/history?game=cs2&limit=100&offset=0"] = (req, res, send) => {
+      send(200, {
+        items: [
+          createMatch("m-no-rounds", 1700003000),
+          createMatch("m-no-player", 1700002000),
+          createMatch("m-malformed", 1700001000)
+        ]
+      });
+    };
+
+    mockResponses["/matches/m-no-rounds/stats"] = (req, res, send) => {
+      send(200, { rounds: [] });
+    };
+    mockResponses["/matches/m-no-player/stats"] = (req, res, send) => {
+      send(200, {
+        rounds: [{
+          round_stats: { Map: "de_dust2" },
+          teams: [{ players: [{ player_id: "other-player", player_stats: { "K/D": "1.0" } }] }]
+        }]
+      });
+    };
+    mockResponses["/matches/m-malformed/stats"] = (req, res, send) => {
+      send(200, { unexpected_field: true });
+    };
+
+    const resIncomplete = await importCareer({ maxPages: 1, delayMs: 1 });
+    assert.strictEqual(resIncomplete.ok, true);
+    assert.strictEqual(resIncomplete.saved, 3);
+
+    const rowsIncomplete = (await pool.query("SELECT match_id, stats, stats_status FROM faceit_matches WHERE match_id IN ('m-no-rounds', 'm-no-player', 'm-malformed')")).rows;
+    for (const r of rowsIncomplete) {
+      assert.strictEqual(r.stats, null, `Stats for ${r.match_id} should be null`);
+      assert.strictEqual(r.stats_status, "pending", `Incomplete response for ${r.match_id} must be 'pending', not 'unavailable'`);
+    }
+
+    delete mockResponses["/matches/m-no-rounds/stats"];
+    delete mockResponses["/matches/m-no-player/stats"];
+    delete mockResponses["/matches/m-malformed/stats"];
+    console.log("✓ Test 6b passed");
+
+    // -------------------------------------------------------------
     // Test 7: HTTP 500 retry and recovery
     // -------------------------------------------------------------
     console.log("Test 7: HTTP 500 retry and recovery");
@@ -319,6 +370,52 @@ async function runTests() {
     assert.strictEqual(row500.stats_status, "available");
     delete mockResponses["/matches/m-500/stats"];
     console.log("✓ Test 7 passed");
+
+    // -------------------------------------------------------------
+    // Test 7b: Explicit timeout retry and recovery
+    // -------------------------------------------------------------
+    console.log("Test 7b: Explicit timeout retry and recovery");
+    await resetDatabase();
+
+    let attemptsTimeout = 0;
+    process.env.FACEIT_TIMEOUT_MS = "150"; // low timeout for fast test
+
+    mockResponses["/players/test-player-1111/history?game=cs2&limit=100&offset=0"] = (req, res, send) => {
+      send(200, { items: [createMatch("m-timeout", 1700001000)] });
+    };
+
+    mockResponses["/matches/m-timeout/stats"] = (req, res, send) => {
+      attemptsTimeout++;
+      if (attemptsTimeout === 1) {
+        // Delay response beyond timeout threshold to trigger AbortSignal timeout
+        setTimeout(() => {
+          if (!res.writableEnded) send(200, { rounds: [] });
+        }, 300);
+        return;
+      }
+      send(200, {
+        rounds: [{
+          round_stats: { Map: "de_anubis" },
+          teams: [
+            {
+              team_stats: { "Final Score": "13" },
+              players: [{ player_id: TEST_PLAYER_ID, nickname: "kiyosei", player_stats: { "K/D Ratio": "1.8" } }]
+            },
+            { team_stats: { "Final Score": "10" }, players: [] }
+          ]
+        }]
+      });
+    };
+
+    const resTimeout = await importCareer({ maxPages: 1, delayMs: 1 });
+    assert.strictEqual(resTimeout.ok, true);
+    assert.strictEqual(attemptsTimeout, 2, "Should retry after timeout and succeed on second attempt");
+    const rowTimeout = (await pool.query("SELECT stats_status FROM faceit_matches WHERE match_id = 'm-timeout'")).rows[0];
+    assert.strictEqual(rowTimeout.stats_status, "available");
+
+    delete mockResponses["/matches/m-timeout/stats"];
+    delete process.env.FACEIT_TIMEOUT_MS;
+    console.log("✓ Test 7b passed");
 
     // -------------------------------------------------------------
     // Test 8: Network failure (socket hang up) retry and recovery
@@ -399,20 +496,29 @@ async function runTests() {
     console.log("✓ Test 9 passed");
 
     // -------------------------------------------------------------
-    // Test 10: Backfilling previously imported matches with pending statistics
+    // Test 10: Backfilling previously imported matches with pending statistics & anti-starvation
+    // Regression test: match 1 fails transiently, but match 2 proceeds and succeeds.
     // -------------------------------------------------------------
-    console.log("Test 10: Backfilling previously imported matches with pending statistics");
-    // Insert a pending match directly into DB
+    console.log("Test 10: Backfill with anti-starvation (first fails transiently, second succeeds)");
     await pool.query(
       `INSERT INTO faceit_matches (match_id, finished_at, map, outcome, stats, stats_status, source)
-       VALUES ('m-pending-repair', 1700000500, 'de_ancient', 'Win', NULL, 'pending', 'career_import')`
+       VALUES
+       ('m-pending-fail', 1700000600, 'de_mirage', 'Loss', NULL, 'pending', 'career_import'),
+       ('m-pending-succeed', 1700000500, 'de_ancient', 'Win', NULL, 'pending', 'career_import')`
     );
 
     // Mock history to return empty (history exhausted) so importCareer runs repair
     mockResponses["/players/test-player-1111/history?game=cs2&limit=100&offset=0"] = (req, res, send) => {
       send(200, { items: [] });
     };
-    mockResponses["/matches/m-pending-repair/stats"] = (req, res, send) => {
+
+    // Match 1 throws 500
+    mockResponses["/matches/m-pending-fail/stats"] = (req, res, send) => {
+      send(500, { error: "Stats service down for this match" });
+    };
+
+    // Match 2 succeeds
+    mockResponses["/matches/m-pending-succeed/stats"] = (req, res, send) => {
       send(200, {
         rounds: [{
           round_stats: { Map: "de_ancient" },
@@ -428,13 +534,64 @@ async function runTests() {
     };
 
     const resRepair = await importCareer({ maxPages: 1, delayMs: 1, backfillPending: true });
-    assert.strictEqual(resRepair.repaired, 1, "Should have repaired 1 pending match");
+    assert.strictEqual(resRepair.repaired, 1, "Should have repaired 1 match despite the first failing");
 
-    const repairedRow = (await pool.query("SELECT stats_status, stats FROM faceit_matches WHERE match_id = 'm-pending-repair'")).rows[0];
-    assert.strictEqual(repairedRow.stats_status, "available");
-    assert.notStrictEqual(repairedRow.stats, null);
-    delete mockResponses["/matches/m-pending-repair/stats"];
+    const rowFailed = (await pool.query("SELECT stats_status FROM faceit_matches WHERE match_id = 'm-pending-fail'")).rows[0];
+    assert.strictEqual(rowFailed.stats_status, "pending", "First match should remain pending for future attempts");
+
+    const rowSucceeded = (await pool.query("SELECT stats_status, stats FROM faceit_matches WHERE match_id = 'm-pending-succeed'")).rows[0];
+    assert.strictEqual(rowSucceeded.stats_status, "available", "Second match must be backfilled to available");
+    assert.notStrictEqual(rowSucceeded.stats, null);
+
+    delete mockResponses["/matches/m-pending-fail/stats"];
+    delete mockResponses["/matches/m-pending-succeed/stats"];
     console.log("✓ Test 10 passed");
+
+    // -------------------------------------------------------------
+    // Test 10b: Regular persistMatches() live tracker path classification
+    // -------------------------------------------------------------
+    console.log("Test 10b: Live tracker persistMatches() classification consistency");
+    await resetDatabase();
+
+    const liveMatches = [
+      createMatch("live-avail", 1700009000),
+      createMatch("live-404", 1700008000),
+      createMatch("live-empty", 1700007000)
+    ];
+
+    mockResponses["/matches/live-avail/stats"] = (req, res, send) => {
+      send(200, {
+        rounds: [{
+          round_stats: { Map: "de_mirage" },
+          teams: [{ players: [{ player_id: TEST_PLAYER_ID, nickname: "kiyosei", player_stats: { "K/D Ratio": "1.3" } }] }]
+        }]
+      });
+    };
+    mockResponses["/matches/live-404/stats"] = (req, res, send) => {
+      send(404, { message: "Not found" });
+    };
+    mockResponses["/matches/live-empty/stats"] = (req, res, send) => {
+      send(200, { rounds: [{ teams: [{ players: [{ player_id: TEST_PLAYER_ID, player_stats: {} }] }] }] });
+    };
+
+    const persistRes = await persistMatches(liveMatches, TEST_PLAYER_ID, "kiyosei", 1750);
+    assert.strictEqual(persistRes.saved, 3);
+
+    const liveRows = (await pool.query("SELECT match_id, stats_status FROM faceit_matches WHERE match_id LIKE 'live-%' ORDER BY match_id")).rows;
+    const liveMap = new Map(liveRows.map(r => [r.match_id, r.stats_status]));
+
+    assert.strictEqual(liveMap.get("live-avail"), "available", "Valid stats must be available");
+    assert.strictEqual(liveMap.get("live-404"), "unavailable", "404 must be unavailable");
+    assert.strictEqual(liveMap.get("live-empty"), "pending", "Empty stats must be pending");
+
+    // Verify 1680 baseline snapshot was created
+    const baselineRow = (await pool.query("SELECT elo FROM elo_snapshots ORDER BY captured_at ASC, id ASC LIMIT 1")).rows[0];
+    assert.strictEqual(baselineRow.elo, 1680, "1,680 ELO baseline must be preserved");
+
+    delete mockResponses["/matches/live-avail/stats"];
+    delete mockResponses["/matches/live-404/stats"];
+    delete mockResponses["/matches/live-empty/stats"];
+    console.log("✓ Test 10b passed");
 
     // -------------------------------------------------------------
     // Test 11: Re-importing completed history without duplicate records or counter inflation

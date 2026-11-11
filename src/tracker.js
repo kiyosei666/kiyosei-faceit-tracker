@@ -1,5 +1,5 @@
 const { pool, ensureSchema } = require("./db");
-const { faceitGet, getPlayerOutcome, getPlayerMatchStats } = require("./faceit");
+const { faceitGet, getPlayerOutcome, getPlayerMatchStats, classifyMatchStats } = require("./faceit");
 
 // The 1,680 comeback baseline. Inserted once as the first snapshot and never
 // updated or deleted by any code path.
@@ -38,10 +38,11 @@ async function persistMatches(historyItems, playerId, nickname, currentElo) {
     try {
       const statsData = await faceitGet(`/matches/${encodeURIComponent(match.match_id)}/stats`);
       const parsed = getPlayerMatchStats(statsData, playerId, nickname);
-      matchStats = parsed.stats;
-      matchMap = parsed.map || matchMap;
-      score = parsed.score;
-      statsStatus = matchStats ? "available" : "unavailable";
+      const classified = classifyMatchStats(parsed);
+      matchStats = classified.stats;
+      matchMap = classified.map || matchMap;
+      score = classified.score;
+      statsStatus = classified.status;
     } catch (error) {
       if (error.status === 404) {
         statsStatus = "unavailable";

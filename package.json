@@ -6,7 +6,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/retry.test.js && node test/import-integration.test.js"
+    "test": "node test/unit.test.js",
+    "test:unit": "node test/unit.test.js",
+    "test:integration": "node test/import-integration.test.js",
+    "test:all": "node test/unit.test.js && node test/import-integration.test.js"
   },
   "engines": {
     "node": ">=20"
