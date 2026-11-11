@@ -3,6 +3,9 @@ const BASELINE = 1680, GOAL = 2000, TARGETS = [1800, 1900, 2000];
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 let recorded = [];
+let matchOffset = 0;
+let hasMoreMatches = false;
+let loadingMoreMatches = false;
 let filter = "all";
 let historyRange = "all";
 let toastTimer = null;
@@ -169,7 +172,8 @@ function renderCurrentForm(matches) {
   const totalCompleted = wins + losses;
   const winRate = totalCompleted > 0 ? Math.round((wins / totalCompleted) * 100) : 0;
   $("form-winrate").textContent = `${winRate}%`;
-  $("form-record").textContent = `${wins}W - ${losses}L (${last30.length} GP)`;
+  const unknown = last30.length - totalCompleted;
+  $("form-record").textContent = `${wins}W - ${losses}L${unknown ? ` · ${unknown} UNKNOWN` : ""} (${last30.length} GP)`;
 
   // ADR & HS
   $("form-adr").textContent = adrCount > 0 ? (totalAdr / adrCount).toFixed(1) : "—";
@@ -198,10 +202,11 @@ function renderCurrentForm(matches) {
   const pips = last30.slice(0, 16).map((m) => {
     const out = (m.outcome || "").toLowerCase();
     const isWin = out === "win";
-    const letter = isWin ? "W" : "L";
-    const cls = isWin ? "w" : "l";
+    const isLoss = out === "loss";
+    const letter = isWin ? "W" : isLoss ? "L" : "?";
+    const cls = isWin ? "w" : isLoss ? "l" : "unknown";
     const date = m.finished_at ? new Date(Number(m.finished_at) * 1000).toLocaleDateString([], { month: "short", day: "numeric" }) : "";
-    const tooltip = `${m.map || "Match"} · ${m.score || ""} · ${isWin ? "Win" : "Loss"} ${date}`;
+    const tooltip = `${m.map || "Match"} · ${m.score || ""} · ${isWin ? "Win" : isLoss ? "Loss" : "Result unknown"} ${date}`;
     return `<span class="form-pip-pill ${cls}" title="${escapeHtml(tooltip)}">${letter}</span>`;
   });
   $("form-pips").innerHTML = pips.join("");
@@ -256,16 +261,24 @@ function matchRow(match) {
   </article>`;
 }
 
-function renderMatches() {
+function renderMatches(append = false) {
   const root = $("matches");
   if (!recorded.length) {
     root.innerHTML = '<p class="empty">NO MATCHES SAVED YET. THEY WILL SYNC AUTOMATICALLY.</p>';
     return;
   }
   const rows = recorded.filter((m) => filter === "all" || (m.outcome || "").toLowerCase() === filter);
-  root.innerHTML = rows.length
+  const markup = rows.length
     ? rows.map(matchRow).join("")
     : `<p class="empty">NO ${filter.toUpperCase()} IN RECORDED MATCHES.</p>`;
+  if (append) root.insertAdjacentHTML("beforeend", markup);
+  else root.innerHTML = markup;
+  const more = $("matches-load-more");
+  if (more) {
+    more.hidden = !hasMoreMatches;
+    more.disabled = loadingMoreMatches;
+    more.textContent = loadingMoreMatches ? "LOADING…" : `LOAD OLDER MATCHES · ${Math.max(0, (window.matchTotal || 0) - recorded.length)} REMAINING`;
+  }
 }
 
 // ==========================================================================
@@ -381,7 +394,8 @@ function renderEloHistory(snapshots, range = "all") {
 
 async function loadHistory(range = historyRange) {
   try {
-    const response = await fetch(`/api/history?range=${encodeURIComponent(range)}`);
+    matchOffset = 0;
+    const response = await fetch(`/api/history?range=${encodeURIComponent(range)}&offset=0&limit=100`);
     if (!response.ok) throw new Error("History unavailable");
     const data = await response.json();
 
@@ -397,6 +411,9 @@ async function loadHistory(range = historyRange) {
     renderEloHistory(snapshots, range);
 
     recorded = data.matches || [];
+    matchOffset = recorded.length;
+    hasMoreMatches = Boolean(data.hasMoreMatches);
+    window.matchTotal = Number(data.totalMatches || recorded.length);
     renderMatches();
     renderCurrentForm(recorded);
 
@@ -485,6 +502,29 @@ document.querySelectorAll(".seg-pills button").forEach((btn) => {
   });
 });
 
+
+async function loadMoreMatches() {
+  if (loadingMoreMatches || !hasMoreMatches) return;
+  loadingMoreMatches = true;
+  renderMatches();
+  try {
+    const response = await fetch(`/api/history?range=all&offset=${matchOffset}&limit=100`);
+    if (!response.ok) throw new Error("Could not load older matches.");
+    const data = await response.json();
+    const next = data.matches || [];
+    recorded = recorded.concat(next);
+    matchOffset += next.length;
+    hasMoreMatches = Boolean(data.hasMoreMatches);
+    window.matchTotal = Number(data.totalMatches || window.matchTotal || recorded.length);
+    renderMatches(true);
+  } catch (error) {
+    toast(error.message, { error: true });
+  } finally {
+    loadingMoreMatches = false;
+    renderMatches();
+  }
+}
+
 // ELO history range controls
 document.querySelectorAll("#history-range button").forEach((btn) => {
   btn.addEventListener("click", async () => {
@@ -496,6 +536,8 @@ document.querySelectorAll("#history-range button").forEach((btn) => {
     await loadHistory(historyRange);
   });
 });
+
+$("matches-load-more")?.addEventListener("click", loadMoreMatches);
 
 // Initial load & 5 minute periodic sync
 load();

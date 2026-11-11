@@ -6,9 +6,10 @@
 
 :root {
   color-scheme: dark;
-  --bg-main: #070709;
-  --glass-surface: rgba(18, 19, 24, 0.72);
-  --glass-surface-hover: rgba(26, 28, 36, 0.82);
+  --bg-main: #030303;
+  --bg-gradient-top: #282828;
+  --glass-surface: rgba(18, 18, 18, 0.78);
+  --glass-surface-hover: rgba(34, 34, 34, 0.88);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-border-hover: rgba(255, 85, 0, 0.4);
   --glass-border-subtle: rgba(255, 255, 255, 0.05);
@@ -41,13 +42,14 @@
 
 html {
   scroll-behavior: smooth;
-  background-color: var(--bg-main);
+  background: linear-gradient(180deg, #282828 0%, #030303 100%);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: var(--bg-main);
+  background: linear-gradient(180deg, var(--bg-gradient-top) 0%, #171717 34%, var(--bg-main) 100%);
+  background-attachment: fixed;
   color: var(--text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -63,9 +65,8 @@ body {
   pointer-events: none;
   z-index: 0;
   background-image:
-    radial-gradient(900px 500px at 85% -5%, rgba(255, 85, 0, 0.12), transparent 70%),
-    radial-gradient(700px 450px at 15% 95%, rgba(255, 85, 0, 0.06), transparent 70%),
-    radial-gradient(1100px 700px at 50% 40%, rgba(20, 21, 26, 0.5), transparent 100%);
+    radial-gradient(900px 500px at 85% -5%, rgba(255, 85, 0, 0.09), transparent 70%),
+    linear-gradient(180deg, rgba(40, 40, 40, 0.12) 0%, transparent 42%);
 }
 
 .dashboard-viewport {
@@ -202,7 +203,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 28px;
-  background: linear-gradient(135deg, rgba(22, 23, 30, 0.8) 0%, rgba(14, 15, 19, 0.7) 100%);
+  background: linear-gradient(135deg, rgba(48, 48, 48, 0.88) 0%, rgba(12, 12, 12, 0.88) 100%);
 }
 
 .header-main {
@@ -1210,3 +1211,23 @@ body {
   .match-date, .match-kda-line { font-size: 9px; }
   .match-elo-delta { font-size: 12px; }
 }
+
+
+/* Historical match pagination */
+.matches-load-more {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(40,40,40,.9), rgba(10,10,10,.9));
+  color: var(--text-muted);
+  font: 600 12px var(--font-sans);
+  letter-spacing: .08em;
+  cursor: pointer;
+  transition: border-color .2s ease, color .2s ease;
+}
+.matches-load-more[hidden] { display: none; }
+.matches-load-more:hover { border-color: rgba(255,85,0,.45); color: var(--text-white); }
+.form-pip-pill.unknown { background: rgba(156,163,175,.08); border: 1px solid rgba(156,163,175,.2); color: var(--text-muted); box-shadow: none; }
