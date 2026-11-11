@@ -110,109 +110,129 @@ function getEloNeededText(elo) {
 }
 
 // ==========================================================================
-// CURRENT FORM – LAST 30 MATCHES CALCULATION
-// ==========================================================================
+// CURRENT FORM – LAST 7 DAYS, PERFORMANCE-BASED
+// Missing FACEIT stats are excluded rather than silently converted to zero.
+function formNumber(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function getFormTier(kd) {
+  if (!Number.isFinite(kd)) return { label: "AWAITING DATA", className: "pending" };
+  if (kd < 0.5) return { label: "BOT", className: "bot" };
+  if (kd < 0.8) return { label: "BOT WITH A BRAIN", className: "brain" };
+  if (kd < 1.0) return { label: "WARMING UP", className: "warming" };
+  if (kd < 1.2) return { label: "SOLID KIYOSEI", className: "solid" };
+  if (kd < 1.5) return { label: "LOCKED IN", className: "locked" };
+  if (kd < 1.9) return { label: "PRIME KIYOSEI", className: "prime" };
+  if (kd < 2.2) return { label: "DONK-LIKE", className: "donk" };
+  return { label: "GODLIKE", className: "godlike" };
+}
+
+function matchKd(match) {
+  const stats = match.stats || {};
+  const kills = formNumber(stat(stats, "Kills", "K"));
+  const deaths = formNumber(stat(stats, "Deaths", "D"));
+  if (kills === null || deaths === null || deaths === 0) return null;
+  return kills / deaths;
+}
 
 function renderCurrentForm(matches) {
-  const last30 = matches.slice(0, 30);
-  if (!last30.length) {
+  const weekStart = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const weekMatches = matches.filter((match) => {
+    const raw = match.finished_at || match.date;
+    if (!raw) return false;
+    const timestamp = Number(raw);
+    const finishedAt = Number.isFinite(timestamp)
+      ? (timestamp < 1e12 ? timestamp * 1000 : timestamp)
+      : new Date(raw).getTime();
+    return Number.isFinite(finishedAt) && finishedAt >= weekStart;
+  });
+  const withStats = weekMatches.filter((match) => {
+    const stats = match.stats || {};
+    return formNumber(stat(stats, "Kills", "K")) !== null &&
+      formNumber(stat(stats, "Deaths", "D")) !== null;
+  });
+
+  if (!weekMatches.length) {
     $("form-kd").textContent = "—";
-    $("form-kda-vals").textContent = "NO SAVED MATCHES";
+    $("form-tier").textContent = "NO MATCHES THIS WEEK";
+    $("form-tier").className = "form-tier pending";
+    $("form-kda-vals").textContent = "NO MATCHES THIS WEEK";
     $("form-winrate").textContent = "—%";
-    $("form-record").textContent = "0W - 0L";
+    $("form-record").textContent = "PLAY AND SYNC TO BUILD YOUR FORM";
     $("form-adr").textContent = "—";
     $("form-hs").textContent = "—%";
     $("form-kda-ratio").textContent = "—";
     $("form-streak").textContent = "NO DATA";
-    $("form-pips").innerHTML = '<span class="empty">PLAY AND SYNC TO POPULATE FORM</span>';
+    $("form-pips").innerHTML = '<span class="empty">YOUR PERFORMANCE TIMELINE WILL APPEAR HERE</span>';
     return;
   }
 
-  let totalKills = 0, totalDeaths = 0, totalAssists = 0;
-  let hasKda = false;
+  let totalKills = 0, totalDeaths = 0, totalAssists = 0, kdaCount = 0;
+  let totalAdr = 0, adrCount = 0, totalHs = 0, hsCount = 0;
   let wins = 0, losses = 0;
-  let totalAdr = 0, adrCount = 0;
-  let totalHs = 0, hsCount = 0;
+  for (const match of weekMatches) {
+    const stats = match.stats || {};
+    const kills = formNumber(stat(stats, "Kills", "K"));
+    const deaths = formNumber(stat(stats, "Deaths", "D"));
+    const assists = formNumber(stat(stats, "Assists", "A"));
+    if (kills !== null && deaths !== null && assists !== null) {
+      totalKills += kills;
+      totalDeaths += deaths;
+      totalAssists += assists;
+      kdaCount++;
+    }
+    const adr = formNumber(stat(stats, "ADR"));
+    if (adr !== null) { totalAdr += adr; adrCount++; }
+    const hs = formNumber(stat(stats, "Headshots %"));
+    if (hs !== null && hs <= 100) { totalHs += hs; hsCount++; }
 
-  last30.forEach((m) => {
-    const outcome = (m.outcome || "").toLowerCase();
+    const outcome = (match.outcome || "").toLowerCase();
     if (outcome === "win") wins++;
     else if (outcome === "loss") losses++;
+  }
 
-    const s = m.stats || {};
-    const k = Number(stat(s, "Kills", "K"));
-    const d = Number(stat(s, "Deaths", "D"));
-    const a = Number(stat(s, "Assists", "A"));
+  const kd = withStats.length && withStats.reduce((sum, match) =>
+    sum + formNumber(stat(match.stats || {}, "Kills", "K")), 0) /
+    (withStats.reduce((sum, match) =>
+      sum + formNumber(stat(match.stats || {}, "Deaths", "D")), 0) || NaN);
+  const tier = getFormTier(kd);
+  $("form-kd").textContent = Number.isFinite(kd) ? kd.toFixed(2) : "—";
+  $("form-tier").textContent = tier.label;
+  $("form-tier").className = `form-tier ${tier.className}`;
 
-    if (Number.isFinite(k)) { totalKills += k; hasKda = true; }
-    if (Number.isFinite(d)) { totalDeaths += d; hasKda = true; }
-    if (Number.isFinite(a)) { totalAssists += a; hasKda = true; }
-
-    const adr = Number(stat(s, "ADR"));
-    if (Number.isFinite(adr)) { totalAdr += adr; adrCount++; }
-
-    const hs = Number(stat(s, "Headshots %", "Headshots"));
-    if (Number.isFinite(hs)) { totalHs += hs; hsCount++; }
-  });
-
-  // K/D & Total K/D/A
-  if (hasKda) {
-    const kd = totalDeaths > 0 ? (totalKills / totalDeaths).toFixed(2) : totalKills.toFixed(2);
-    $("form-kd").textContent = kd;
+  if (kdaCount) {
     $("form-kda-vals").textContent = `${totalKills.toLocaleString()} / ${totalDeaths.toLocaleString()} / ${totalAssists.toLocaleString()}`;
-    const kdaRatio = totalDeaths > 0 ? ((totalKills + totalAssists) / totalDeaths).toFixed(2) : "—";
-    $("form-kda-ratio").textContent = kdaRatio;
+    $("form-kda-ratio").textContent = totalDeaths > 0
+      ? ((totalKills + totalAssists) / totalDeaths).toFixed(2) : "—";
   } else {
-    $("form-kd").textContent = "—";
-    $("form-kda-vals").textContent = "SYNCING STATS...";
+    $("form-kda-vals").textContent = "STATS PENDING";
     $("form-kda-ratio").textContent = "—";
   }
 
-  // Win Rate
-  const totalCompleted = wins + losses;
-  const winRate = totalCompleted > 0 ? Math.round((wins / totalCompleted) * 100) : 0;
-  $("form-winrate").textContent = `${winRate}%`;
-  const unknown = last30.length - totalCompleted;
-  $("form-record").textContent = `${wins}W - ${losses}L${unknown ? ` · ${unknown} UNKNOWN` : ""} (${last30.length} GP)`;
+  const completed = wins + losses;
+  $("form-winrate").textContent = completed ? `${Math.round(wins / completed * 100)}%` : "—%";
+  $("form-record").textContent = `${weekMatches.length} MATCHES · ${withStats.length} WITH K/D DATA`;
+  $("form-adr").textContent = adrCount ? (totalAdr / adrCount).toFixed(1) : "—";
+  $("form-hs").textContent = hsCount ? `${Math.round(totalHs / hsCount)}%` : "—";
+  $("form-streak").textContent = `${withStats.length} MATCHES RATED`;
 
-  // ADR & HS
-  $("form-adr").textContent = adrCount > 0 ? (totalAdr / adrCount).toFixed(1) : "—";
-  $("form-hs").textContent = hsCount > 0 ? `${Math.round(totalHs / hsCount)}%` : "—";
-
-  // Streak Calculation (most recent first)
-  let streakCount = 0;
-  let streakType = "";
-  for (const m of last30) {
-    const out = (m.outcome || "").toLowerCase();
-    if (out !== "win" && out !== "loss") continue;
-    if (!streakType) {
-      streakType = out;
-      streakCount = 1;
-    } else if (out === streakType) {
-      streakCount++;
-    } else {
-      break;
-    }
-  }
-  $("form-streak").textContent = streakType
-    ? `STREAK: ${streakCount}${streakType === "win" ? "W" : "L"}`
-    : "STREAK: —";
-
-  // Sequence Pills (last 16 visible, newest first)
-  const pips = last30.slice(0, 16).map((m) => {
-    const out = (m.outcome || "").toLowerCase();
-    const isWin = out === "win";
-    const isLoss = out === "loss";
-    const letter = isWin ? "W" : isLoss ? "L" : "?";
-    const cls = isWin ? "w" : isLoss ? "l" : "unknown";
-    const date = m.finished_at ? new Date(Number(m.finished_at) * 1000).toLocaleDateString([], { month: "short", day: "numeric" }) : "";
-    const tooltip = `${m.map || "Match"} · ${m.score || ""} · ${isWin ? "Win" : isLoss ? "Loss" : "Result unknown"} ${date}`;
-    return `<span class="form-pip-pill ${cls}" title="${escapeHtml(tooltip)}">${letter}</span>`;
+  // Each marker represents individual fragging performance, never the match result.
+  const pips = weekMatches.slice(0, 16).map((match) => {
+    const individualKd = matchKd(match);
+    const matchTier = getFormTier(individualKd);
+    const dateRaw = match.finished_at || match.date;
+    const date = dateRaw ? new Date(Number(dateRaw) < 1e12 ? Number(dateRaw) * 1000 : dateRaw)
+      .toLocaleDateString([], { month: "short", day: "numeric" }) : "";
+    const rating = Number.isFinite(individualKd) ? `${individualKd.toFixed(2)} K/D · ${matchTier.label}` : "STATS PENDING";
+    const tooltip = `${match.map || "Match"} · ${rating} · ${date}`;
+    return `<span class="form-pip-pill ${matchTier.className}" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(rating)}"></span>`;
   });
   $("form-pips").innerHTML = pips.join("");
 }
 
-// ==========================================================================
 // MATCH HISTORY TABLE
 // ==========================================================================
 
