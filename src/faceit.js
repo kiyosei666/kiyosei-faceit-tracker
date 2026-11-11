@@ -60,18 +60,25 @@ async function faceitGet(endpoint, { retries = 3, baseDelayMs = 800, timeoutMs }
 }
 
 function getPlayerOutcome(match, playerId) {
-  if (!match || typeof match !== "object") return "Unknown";
-  const winner = match.results?.winner;
+  if (!match || typeof match !== "object" || !playerId) return "Unknown";
+  const winner = match.results?.winner == null ? "" : String(match.results.winner);
   const teams = match.teams && typeof match.teams === "object" ? match.teams : {};
+  const targetId = String(playerId);
   for (const [teamName, team] of Object.entries(teams)) {
-    const roster = Array.isArray(team?.roster) ? team.roster : [];
-    if (roster.some((member) => member && member.player_id === playerId)) {
-      return winner ? (winner === teamName ? "Win" : "Loss") : "Unknown";
+    const members = [
+      ...(Array.isArray(team?.players) ? team.players : []),
+      ...(Array.isArray(team?.roster) ? team.roster : [])
+    ];
+    const isPlayerOnTeam = members.some((member) =>
+      member && member.player_id != null && String(member.player_id) === targetId
+    );
+    if (isPlayerOnTeam) {
+      if (!winner) return "Unknown";
+      return winner === String(teamName) || winner === String(team?.team_id) ? "Win" : "Loss";
     }
   }
   return "Unknown";
 }
-
 /**
  * Hardened match stats extraction from FACEIT API response.
  * Handles missing rounds, non-array structures, null elements, and empty/invalid player_stats.
