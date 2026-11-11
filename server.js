@@ -65,9 +65,11 @@ app.get("/api/player", async (_req, res) => {
   }
 });
 
-app.get("/api/history", async (_req, res) => {
+app.get("/api/history", async (req, res) => {
   try {
-    res.json(await readTrackingData());
+    const rawRange = String(req.query.range || "all").toLowerCase();
+    const range = (rawRange === "7d" || rawRange === "30d") ? rawRange : "all";
+    res.json(await readTrackingData(range));
   } catch (error) {
     console.error("History read failed:", error.message);
     res.status(500).json({ error: "Could not read saved match history." });
