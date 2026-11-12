@@ -6,6 +6,68 @@ const { faceitGet, getPlayerOutcome, getPlayerMatchStats, classifyMatchStats } =
 const BASELINE_ELO = 1680;
 const BASELINE_AT = "2026-11-11T00:00:00+08:00";
 
+
+// PostgreSQL returns BIGINT timestamps as strings. FACEIT timestamps may be
+// epoch seconds or milliseconds, while snapshot timestamps arrive as Dates.
+function parseHistoryTimestamp(value) {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? new Date(value.getTime()) : null;
+  }
+  if (typeof value === "number" || (typeof value === "string" && /^\\d+(?:\\.\\d+)?$/.test(value.trim()))) {
+    let timestamp = Number(value);
+    if (!Number.isFinite(timestamp)) return null;
+    if (Math.abs(timestamp) < 1e12) timestamp *= 1000; // epoch seconds -> milliseconds
+    const date = new Date(timestamp);
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+  if (typeof value !== "string" || !value.trim()) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function buildMergedSnapshots(snapshotRows, matchRows, range = "all", now = Date.now()) {
+  const points = (snapshotRows || []).map((row) => ({
+    elo: row.elo,
+    captured_at: row.captured_at,
+    source: "elo_snapshots.captured_at"
+  }));
+
+  for (const match of matchRows || []) {
+    if (match.elo_before !== null && match.elo_before !== undefined && match.started_at != null) {
+      points.push({ elo: match.elo_before, captured_at: match.started_at, source: "faceit_matches.started_at" });
+    }
+    if (match.elo_after !== null && match.elo_after !== undefined && match.finished_at != null) {
+      points.push({ elo: match.elo_after, captured_at: match.finished_at, source: "faceit_matches.finished_at" });
+    }
+  }
+
+  const cutoff = range === "7d" ? now - 7 * 86400000
+    : range === "30d" ? now - 30 * 86400000 : null;
+  const seen = new Set();
+  const validPoints = [];
+
+  for (const point of points) {
+    if (!Number.isFinite(Number(point.elo))) continue;
+    const date = parseHistoryTimestamp(point.captured_at);
+    if (!date) {
+      if (point.captured_at != null && point.captured_at !== "") {
+        console.warn("[history] Skipping invalid timestamp from " + point.source);
+      }
+      continue;
+    }
+    if (cutoff !== null && date.getTime() < cutoff) continue;
+
+    const capturedAt = date.toISOString();
+    const key = capturedAt + ":" + Number(point.elo);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    validPoints.push({ elo: Number(point.elo), captured_at: capturedAt, _time: date.getTime() });
+  }
+
+  validPoints.sort((a, b) => a._time - b._time);
+  return validPoints.map(({ elo, captured_at }) => ({ elo, captured_at }));
+}
+
 async function persistMatches(historyItems, playerId, nickname, currentElo) {
   if (!(await ensureSchema())) return { configured: false, saved: 0 };
   const latestSnapshot = await pool.query(
@@ -119,35 +181,11 @@ async function readTrackingData(range = "all", offset = 0, limit = 100) {
     )
   ]);
 
-  // Include exact per-match ELO values when the tracker could safely attribute
-  // a single match between two observed player-profile snapshots. The public
-  // FACEIT history endpoint does not expose historical per-match ELO, so older
-  // imported matches without these values remain intentionally absent.
-  const chartPoints = [...snapshotResult.rows];
-  for (const match of chartMatchResult.rows) {
-    if (match.elo_before !== null && match.started_at) {
-      chartPoints.push({ elo: match.elo_before, captured_at: match.started_at });
-    }
-    if (match.elo_after !== null && match.finished_at) {
-      chartPoints.push({ elo: match.elo_after, captured_at: match.finished_at });
-    }
-  }
-
-  const seenPoints = new Set();
-  const mergedSnapshots = chartPoints
-    .filter((point) => point.captured_at && Number.isFinite(Number(point.elo)))
-    .sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
-    .filter((point) => {
-      const key = `${new Date(point.captured_at).toISOString()}:${Number(point.elo)}`;
-      if (seenPoints.has(key)) return false;
-      seenPoints.add(key);
-      return true;
-    })
-    .filter((point) => {
-      if (normalizedRange === "7d") return new Date(point.captured_at) >= new Date(Date.now() - 7 * 86400000);
-      if (normalizedRange === "30d") return new Date(point.captured_at) >= new Date(Date.now() - 30 * 86400000);
-      return true;
-    });
+  const mergedSnapshots = buildMergedSnapshots(
+    snapshotResult.rows,
+    chartMatchResult.rows,
+    normalizedRange
+  );
 
   return {
     configured: true,
@@ -164,4 +202,4 @@ async function readTrackingData(range = "all", offset = 0, limit = 100) {
   };
 }
 
-module.exports = { persistMatches, readTrackingData, BASELINE_ELO, BASELINE_AT };
+module.exports = { persistMatches, readTrackingData, buildMergedSnapshots, parseHistoryTimestamp, BASELINE_ELO, BASELINE_AT };
