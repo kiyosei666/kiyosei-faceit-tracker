@@ -12,6 +12,53 @@ const {
 
 console.log("Starting unit tests...");
 
+const { buildMergedSnapshots, parseHistoryTimestamp } = require("../src/tracker");
+
+// -------------------------------------------------------------
+// 0. History timestamp normalization and invalid-date regression
+// -------------------------------------------------------------
+const fixedNow = Date.parse("2026-11-13T00:00:00.000Z");
+assert.strictEqual(parseHistoryTimestamp(null), null, "null timestamps must be rejected");
+assert.strictEqual(parseHistoryTimestamp("not-a-date"), null, "malformed timestamps must be rejected");
+assert.strictEqual(parseHistoryTimestamp(new Date("invalid")), null, "invalid Date objects must be rejected");
+assert.strictEqual(
+  parseHistoryTimestamp("1794528000").toISOString(),
+  new Date(1794528000 * 1000).toISOString(),
+  "numeric epoch-second strings must be normalized"
+);
+assert.strictEqual(
+  parseHistoryTimestamp("1794528000000").toISOString(),
+  new Date(1794528000000).toISOString(),
+  "numeric epoch-millisecond strings must be normalized"
+);
+const historyPoints = buildMergedSnapshots(
+  [
+    { elo: 1680, captured_at: new Date("2026-11-11T00:00:00.000Z") },
+    { elo: 1700, captured_at: "not-a-date" },
+    { elo: 1710, captured_at: null }
+  ],
+  [
+    { elo_before: 1720, started_at: "1794528000", elo_after: null, finished_at: null },
+    { elo_before: null, started_at: null, elo_after: 1730, finished_at: "broken-timestamp" }
+  ],
+  "all",
+  fixedNow
+);
+assert.deepStrictEqual(historyPoints.map((point) => point.elo), [1680, 1720],
+  "valid snapshot and epoch timestamps should survive while invalid timestamps are skipped");
+assert.strictEqual(historyPoints[1].captured_at, new Date(1794528000 * 1000).toISOString());
+const recentPoints = buildMergedSnapshots(
+  [{ elo: 1680, captured_at: new Date("2026-11-01T00:00:00.000Z") },
+   { elo: 1759, captured_at: new Date("2026-11-12T00:00:00.000Z") }],
+  [],
+  "7d",
+  fixedNow
+);
+assert.deepStrictEqual(recentPoints.map((point) => point.elo), [1759],
+  "7d filtering should retain only points inside the selected range");
+console.log("✓ history timestamp regression tests passed");
+
+
 // -------------------------------------------------------------
 // 1. Timeout Normalization
 // -------------------------------------------------------------
