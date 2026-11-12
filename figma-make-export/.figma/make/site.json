@@ -1,0 +1,10 @@
+{
+  "description": "Track FACEIT match stats and player performance in a redesigned dashboard that helps competitive gamers review progress and make informed decisions.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
