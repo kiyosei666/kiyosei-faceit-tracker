@@ -7,7 +7,6 @@
 html {
   scroll-behavior: smooth;
   background: var(--bg);
-  scroll-padding-top: calc(var(--header-h) + 36px);
 }
 
 body {

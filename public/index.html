@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="/css/components.css">
   <link rel="stylesheet" href="/css/layout.css">
   <link rel="stylesheet" href="/css/sections.css">
+  <link rel="stylesheet" href="/css/features.css">
 </head>
 <body>
   <!-- Icon sprite: add a <symbol> here, use it with <svg class="icon"><use href="#i-name"/></svg> -->
@@ -24,6 +25,7 @@
     <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
     <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="i-coach" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></symbol>
     <symbol id="i-top" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></symbol>
   </svg>
 
@@ -35,6 +37,7 @@
     <a class="icon-btn" href="#history"       data-nav="history"       title="ELO progression"><svg class="icon"><use href="#i-chart"/></svg></a>
     <a class="icon-btn" href="#matches-panel" data-nav="matches-panel" title="Match history"><svg class="icon"><use href="#i-list"/></svg></a>
     <a class="icon-btn" href="#form-panel"    data-nav="form-panel"    title="Current form"><svg class="icon"><use href="#i-pulse"/></svg></a>
+    <a class="icon-btn" href="#ai-coach"      data-nav="ai-coach"      title="AI coach"><svg class="icon"><use href="#i-coach"/></svg></a>
   </nav>
 
   <div class="app">
@@ -49,6 +52,7 @@
         <a class="topnav__link"           href="#history"       data-nav="history">ELO</a>
         <a class="topnav__link"           href="#matches-panel" data-nav="matches-panel">MATCHES</a>
         <a class="topnav__link"           href="#form-panel"    data-nav="form-panel">FORM</a>
+        <a class="topnav__link"           href="#ai-coach"      data-nav="ai-coach">COACH</a>
       </nav>
 
       <div class="topbar__right">
@@ -88,15 +92,28 @@
             <div class="pill pill--accent" id="elo-needed-pill">
               <span id="elo-needed-text">ELO NEEDED: —</span>
             </div>
+            <div class="pill streak" id="streak-pill" hidden>
+              <span class="streak__badge" id="streak-badge">–</span>
+              <span id="streak-text">—</span>
+              <span class="streak__dots" id="streak-dots" role="img"></span>
+            </div>
           </div>
 
           <div class="score" id="current-pill" title="Current FACEIT ELO">
             <div class="score__row">
               <div class="score__main">
-                <img id="current-level-icon" class="level-icon level-icon--xl" data-pending alt="">
+                <div class="level-ring" id="level-ring" style="--p:0" role="img" aria-label="Progress to next FACEIT level">
+                  <svg viewBox="0 0 92 92" aria-hidden="true">
+                    <defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff3d00"/><stop offset="1" stop-color="#ffb020"/></linearGradient></defs>
+                    <circle class="level-ring__track" cx="46" cy="46" r="40"/>
+                    <circle class="level-ring__bar" cx="46" cy="46" r="40" stroke="url(#ringGrad)"/>
+                  </svg>
+                  <img id="current-level-icon" class="level-icon level-icon--xl" data-pending alt="">
+                </div>
                 <div>
                   <span class="score__value" id="current-elo">—</span>
                   <span class="score__label">CURRENT ELO</span>
+                  <span class="ring-caption" id="ring-caption"></span>
                 </div>
               </div>
             </div>
@@ -187,6 +204,17 @@
             </div>
           </div>
         </section>
+
+        <!-- AI Coach: live insights today; daily AI report slot for later (see js/features/coach.js) -->
+        <section class="glass panel coach" id="ai-coach" data-section="ai-coach">
+          <div class="panel__head">
+            <h2 class="panel__title">AI COACH</h2>
+            <span class="pill pill--sm" id="coach-mode">LIVE INSIGHTS</span>
+          </div>
+          <div id="coach-report" class="coach-report" hidden></div>
+          <div id="coach-body"><div class="sk-row"></div></div>
+          <p class="coach__note">CALCULATED IN YOUR BROWSER FROM YOUR SAVED MATCHES (LAST 10 VS EARLIER). THESE ARE SIGNALS FROM SMALL SAMPLES, NOT PROOF. NO AI MODEL IS USED YET.</p>
+        </section>
       </aside>
     </div>
 
@@ -204,6 +232,11 @@
   </div>
 
   <div id="notice" class="notice-toast" role="status" aria-live="polite"></div>
+  <!-- Feature modules listen for "kiyosei:data" (published by app.js); load them first -->
+  <script src="/js/features/level-ring.js"></script>
+  <script src="/js/features/streak.js"></script>
+  <script src="/js/features/coach.js"></script>
+  <script src="/js/features/celebrations.js"></script>
   <script src="/app.js"></script>
   <script src="/js/ui.js"></script>
 </body>

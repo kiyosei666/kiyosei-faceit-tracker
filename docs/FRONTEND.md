@@ -10,7 +10,9 @@ Front end only: `public/`. Nothing here touches the API, database or data shapes
 | `public/css/components.css` | `.glass`, `.panel`, `.pill`, `.seg`, `.tile`, `.icon-btn`, toast, skeletons |
 | `public/css/layout.css` | Top pill nav, left rail, content grid, floating dock, breakpoints |
 | `public/css/sections.css` | Hero, ELO chart, match history, current form |
-| `public/js/ui.js` | UI-only behaviour (scroll-spy, refresh button) |
+| `public/css/features.css` | Styles for the feature modules below |
+| `public/js/ui.js` | UI-only behaviour (nav highlight, refresh, back-to-top) |
+| `public/js/features/*.js` | One file per feature (ring, streak, coach, celebrations) |
 | `public/app.js` | Data loading + rendering (unchanged logic) |
 
 ## Common edits
@@ -39,3 +41,36 @@ Front end only: `public/`. Nothing here touches the API, database or data shapes
 ## Conventions
 - No raw colours/radii/blur in component files; use tokens.
 - Element IDs are the contract with `app.js`. Rename an ID only together with its `$("...")` usage.
+
+## Feature modules (`public/js/features/`)
+`app.js` loads data and then calls `publishData()`, which fires a `kiyosei:data` event with
+`{ ready, elo, level, peakElo, matches, totalMatches, targets, baseline, goal }` (matches newest first).
+Feature files only listen to that event; they never call the API. To add a feature: create
+`js/features/<name>.js`, listen for `kiyosei:data`, add a `<script>` before `app.js`, add styles to `features.css`.
+
+| Module | What it does |
+|---|---|
+| `level-ring.js` | Ring around the level icon = progress inside the current FACEIT level (bands in `LEVEL_STARTS`) |
+| `streak.js` | Current win/loss streak + last-10 dots from saved matches |
+| `coach.js` | AI Coach panel. **Live insights** (last 10 vs earlier matches, best/worst map, ELO pace) are plain calculations, not an AI model |
+| `celebrations.js` | Confetti + banner when you cross a target in `TARGETS` or move up a level |
+
+### Milestone celebrations
+Each milestone fires once per browser (stored in `localStorage` key `kiyosei:milestones:v1`).
+The first visit records current progress silently. Preview any time with `?celebrate=1900`
+(or `?celebrate=level`), or `KiyoseiCelebrate.demo("2,000 ELO")` in the console.
+To replay: `localStorage.removeItem("kiyosei:milestones:v1")`.
+
+### AI Coach: connecting a real daily report later
+The panel already has a report slot. When a backend report exists, call `KiyoseiCoach.renderReport(report)`
+or set `REPORT_ENDPOINT` at the top of `coach.js`. Expected shape (strings or `{ text }` items, max 6 each):
+```json
+{ "date": "2026-11-16", "summary": "…", "strengths": [], "weaknesses": [], "patterns": [], "priorities": [] }
+```
+Invalid or non-JSON responses are ignored and the panel stays on live insights. All text is HTML-escaped.
+
+## Navigation highlight rules (`ui.js`)
+- Active section = last section whose top has passed a line just under the header; bottom of page = last section.
+- Two-column layout: follows the main column; FORM and COACH (side column) light up when clicked and stay lit until you scroll ~100px.
+- One-column layout: all sections take part in page order.
+- The only scroll offset is `[data-section] { scroll-margin-top }` in `layout.css`.
