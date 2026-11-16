@@ -110,6 +110,24 @@ function getEloNeededText(elo) {
 }
 
 // ==========================================================================
+// GOAL BAR – presentation only. Uses BASELINE / TARGETS / GOAL defined above.
+function renderGoalProgress(elo) {
+  const bar = $("goal-bar");
+  if (!bar) return;
+  const span = GOAL - BASELINE;
+  const pct = (v) => Math.max(0, Math.min(100, ((v - BASELINE) / span) * 100));
+  const value = Number(elo);
+  bar.style.setProperty("--p", Number.isFinite(value) ? pct(value).toFixed(2) : 0);
+  const marks = [BASELINE, ...TARGETS.filter((t) => t > BASELINE && t < GOAL), GOAL];
+  $("goal-ticks").innerHTML = marks.map((m) =>
+    `<span class="goal__tick${Number.isFinite(value) && value >= m ? " is-reached" : ""}" style="left:${pct(m)}%">${m.toLocaleString()}</span>`
+  ).join("");
+  bar.setAttribute("aria-label", Number.isFinite(value)
+    ? `${value.toLocaleString()} ELO, ${BASELINE.toLocaleString()} start, ${GOAL.toLocaleString()} goal`
+    : "Progress toward ELO goal");
+}
+
+// ==========================================================================
 // CURRENT FORM – LAST 7 DAYS, PERFORMANCE-BASED
 // Missing FACEIT stats are excluded rather than silently converted to zero.
 function formNumber(value) {
@@ -230,7 +248,8 @@ function renderCurrentForm(matches) {
       .toLocaleDateString([], { month: "short", day: "numeric" }) : "";
     const rating = Number.isFinite(individualKd) ? `${individualKd.toFixed(2)} K/D · ${matchTier.label}` : "STATS PENDING";
     const tooltip = `${match.map || "Match"} · ${rating} · ${date}`;
-    return `<span class="form-pip-pill ${matchTier.className}" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(rating)}"></span>`;
+    const kdText = Number.isFinite(individualKd) ? individualKd.toFixed(2) : "—";
+    return `<span class="form-pip-pill ${matchTier.className}" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(rating)}"><b>${kdText}</b><small>${escapeHtml(date)}</small></span>`;
   });
   $("form-pips").innerHTML = pips.join("");
 }
@@ -320,11 +339,11 @@ function renderHistorySummary(pts, range, allTimePeak, peakSource) {
     ? "HISTORICAL PEAK · PLAYER REPORTED · DATE UNKNOWN"
     : "HIGHEST ELO IN SAVED RECORDS";
   sum.innerHTML = `
-    <div>${periodLabel}<strong>${first ? first.v.toLocaleString() : "—"}</strong></div>
-    <div>LATEST SNAPSHOT<strong>${latest ? latest.v.toLocaleString() : "—"}</strong></div>
-    <div>TRACKED PEAK<strong>${trackedPeak === null ? "—" : trackedPeak.toLocaleString()}</strong></div>
-    <div>${progressLabel}<strong class="${progress === null ? "" : progress >= 0 ? "pos" : "neg"}">${progress === null ? "—" : `${progress > 0 ? "+" : ""}${progress.toLocaleString()}`}</strong></div>
-    <div title="${peakNote}">ALL-TIME PEAK<strong>${Number.isFinite(Number(allTimePeak)) && Number(allTimePeak) > 0 ? Number(allTimePeak).toLocaleString() : "—"}</strong></div>
+    <div class="tile"><span class="tile__label">${periodLabel}</span><strong class="tile__value">${first ? first.v.toLocaleString() : "—"}</strong></div>
+    <div class="tile"><span class="tile__label">LATEST SNAPSHOT</span><strong class="tile__value">${latest ? latest.v.toLocaleString() : "—"}</strong></div>
+    <div class="tile"><span class="tile__label">TRACKED PEAK</span><strong class="tile__value">${trackedPeak === null ? "—" : trackedPeak.toLocaleString()}</strong></div>
+    <div class="tile"><span class="tile__label">${progressLabel}</span><strong class="tile__value ${progress === null ? "" : progress >= 0 ? "pos" : "neg"}">${progress === null ? "—" : `${progress > 0 ? "+" : ""}${progress.toLocaleString()}`}</strong></div>
+    <div class="tile" title="${peakNote}"><span class="tile__label">ALL-TIME PEAK</span><strong class="tile__value">${Number.isFinite(Number(allTimePeak)) && Number(allTimePeak) > 0 ? Number(allTimePeak).toLocaleString() : "—"}</strong></div>
   `;
 }
 
@@ -342,9 +361,9 @@ function renderEloHistory(snapshots, range = "all", allTimePeak = null, peakSour
   }
   if (pts.length === 1) {
     const single = pts[0];
-    root.innerHTML = `<div class="empty" style="padding:2rem 1rem">
-      <p style="font-size:1.1rem;margin-bottom:0.5rem"><strong>${single.v.toLocaleString()} ELO</strong> RECORDED ON ${single.t.toLocaleDateString([], { month: "short", day: "numeric" })}</p>
-      <p style="color:var(--text-dim);font-size:0.9rem">INSUFFICIENT DATA IN THIS TIME RANGE TO RENDER A TREND LINE. PLAY MORE MATCHES AND YOUR ELO PROGRESSION WILL APPEAR HERE.</p>
+    root.innerHTML = `<div class="empty empty--roomy">
+      <p><strong>${single.v.toLocaleString()} ELO</strong> RECORDED ON ${single.t.toLocaleDateString([], { month: "short", day: "numeric" })}</p>
+      <p>INSUFFICIENT DATA IN THIS TIME RANGE TO RENDER A TREND LINE. PLAY MORE MATCHES AND YOUR ELO PROGRESSION WILL APPEAR HERE.</p>
     </div>`;
     renderHistorySummary(pts, range, allTimePeak, peakSource);
     return;
@@ -380,11 +399,16 @@ function renderEloHistory(snapshots, range = "all", allTimePeak = null, peakSour
         <stop offset="0%" stop-color="#ff5500" stop-opacity="0.35"/>
         <stop offset="100%" stop-color="#ff5500" stop-opacity="0"/>
       </linearGradient>
+      <linearGradient id="eloLine" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#ff3d00"/>
+        <stop offset="55%" stop-color="#ff5500"/>
+        <stop offset="100%" stop-color="#ffb020"/>
+      </linearGradient>
     </defs>
     ${grid}
     ${refs}
     <path class="chart-area" fill="url(#eloGlowArea)" d="${area}"/>
-    <path class="chart-line" pathLength="1" d="${line}"/>
+    <path class="chart-line" pathLength="1" stroke="url(#eloLine)" d="${line}"/>
     ${dots}
     <g class="chart-hov" id="chart-hov">
       <line class="chart-crosshair" id="chart-cross" y1="${T}" y2="${H - B}"/>
@@ -498,7 +522,7 @@ async function load() {
 
     // Profile Details
     $("nickname").textContent = (player.nickname || "KIYOSEI").toUpperCase();
-    if (player.faceitUrl) $("faceit-link").href = player.faceitUrl;
+    if (player.faceitUrl) document.querySelectorAll("#faceit-link, [data-faceit-link]").forEach((a) => { a.href = player.faceitUrl; });
 
     // Avatar Priority: Live FACEIT Profile Avatar, fallback to extracted anime avatar
     const avatarImg = $("avatar-img");
@@ -513,6 +537,8 @@ async function load() {
     const currLvl = Number.isFinite(skillLevel) ? skillLevel : getSkillLevel(currentElo);
     $("current-level-icon").src = getLevelIcon(currLvl, currLvl >= 11);
     $("current-level-icon").alt = `Level ${currLvl}`;
+
+    renderGoalProgress(currentElo);
 
     // ELO Needed Pill
     $("elo-needed-text").textContent = getEloNeededText(currentElo);
@@ -534,10 +560,10 @@ async function load() {
 }
 
 // Filter buttons
-document.querySelectorAll(".seg-pills button").forEach((btn) => {
+document.querySelectorAll("#match-filter button").forEach((btn) => {
   btn.addEventListener("click", () => {
     filter = btn.dataset.f;
-    document.querySelectorAll(".seg-pills button").forEach((b) => {
+    document.querySelectorAll("#match-filter button").forEach((b) => {
       b.classList.toggle("active", b === btn);
       b.setAttribute("aria-pressed", b === btn);
     });
@@ -585,3 +611,6 @@ $("matches-load-more")?.addEventListener("click", loadMoreMatches);
 // Initial load & 5 minute periodic sync
 load();
 setInterval(load, 5 * 60 * 1000);
+
+// Hook for ui.js (refresh button). No new data access: it re-runs load().
+window.KiyoseiApp = { refresh: load };
