@@ -1,0 +1,190 @@
+/* ==========================================================================
+   LAYOUT — page frame: top pill nav, left icon rail, content grid, dock.
+
+   Adding a section: drop a <section class="glass panel" data-section="x">
+   into .layout__main or .layout__side. Add a matching nav link/rail button
+   with data-nav="x". See docs/FRONTEND.md.
+   ========================================================================== */
+
+.app {
+  position: relative;
+  z-index: 1;
+  width: min(100%, var(--shell-max));
+  margin-inline: auto;
+  padding: 14px var(--shell-pad) 0;
+}
+
+/* ---- Top navigation (pills in a frosted bar) ---------------------------- */
+.topbar {
+  position: sticky;
+  top: 12px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: var(--header-h);
+  padding: 10px 12px;
+  border-radius: var(--r-pill);
+  background: rgba(14, 14, 18, 0.55);
+  -webkit-backdrop-filter: var(--blur-lg);
+  backdrop-filter: var(--blur-lg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-float), var(--glass-highlight);
+}
+.topbar__brand {
+  display: grid;
+  place-items: center;
+  width: 46px; height: 46px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--glass-2);
+  border: 1px solid var(--glass-border);
+}
+.topbar__brand img { width: 24px; height: 20px; filter: drop-shadow(0 0 10px var(--accent-glow)); }
+
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid var(--glass-border-subtle);
+  min-width: 0;
+}
+.topnav__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: all var(--dur) var(--ease);
+}
+.topnav__link:hover { color: var(--text); background: var(--glass-2); }
+.topnav__link.is-active {
+  color: var(--text);
+  background: var(--glass-2);
+  border-color: rgba(255, 85, 0, 0.55);
+  box-shadow: 0 0 16px rgba(255, 85, 0, 0.22), var(--glass-highlight);
+}
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex: none;
+}
+
+/* ---- Left icon rail ----------------------------------------------------- */
+.rail {
+  position: fixed;
+  z-index: 40;
+  left: var(--shell-pad);
+  top: calc(var(--header-h) + 52px);
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px;
+  border-radius: var(--r-pill);
+  background: rgba(14, 14, 18, 0.5);
+  -webkit-backdrop-filter: var(--blur-md);
+  backdrop-filter: var(--blur-md);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-float), var(--glass-highlight);
+}
+
+/* ---- Content grid ------------------------------------------------------- */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(340px, 1fr);
+  gap: var(--gap);
+  margin-top: var(--gap);
+  align-items: start;
+}
+.layout__main, .layout__side { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+[data-section] { scroll-margin-top: calc(var(--header-h) + 36px); }
+
+/* ---- Footer ------------------------------------------------------------- */
+.app-footer {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 36px 12px 0;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* ---- Floating action dock (reference: bottom pill bar) ------------------ */
+.dock {
+  position: fixed;
+  z-index: 60;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: var(--r-pill);
+  background: rgba(18, 18, 24, 0.55);
+  -webkit-backdrop-filter: var(--blur-lg);
+  backdrop-filter: var(--blur-lg);
+  border: 1px solid var(--glass-border-strong);
+  box-shadow: var(--shadow-float), var(--glass-highlight);
+}
+.dock .pill { padding: 11px 20px; }
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+
+/* Wide: rail appears, content shifts right to clear it */
+@media (min-width: 1240px) {
+  .rail { display: flex; }
+  .app { padding-left: calc(var(--shell-pad) + var(--rail-w) + 24px); }
+  .topbar { margin-left: 0; }
+}
+
+/* Keep the detail panel in view while the left column scrolls */
+@media (min-width: 1000px) and (min-height: 820px) {
+  .layout__side { position: sticky; top: calc(var(--header-h) + 36px); }
+}
+
+@media (max-width: 1100px) {
+  .topbar__right .pill-sync { display: none; }
+}
+
+@media (max-width: 999px) {
+  .layout { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  :root { --header-h: 60px; }
+  .topbar { flex-wrap: wrap; border-radius: var(--r-xl); gap: 10px; }
+  .topbar__right { margin-left: auto; }
+  .topbar__right .pill-profile { display: none; }
+  .topnav {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .topnav::-webkit-scrollbar { display: none; }
+  .topnav__link { padding: 8px 14px; font-size: 12px; }
+  .dock { gap: 2px; }
+  .dock .pill { padding: 10px 14px; font-size: 12px; }
+  .dock .pill-label-long { display: none; }
+}

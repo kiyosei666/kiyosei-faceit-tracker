@@ -1,0 +1,81 @@
+/* ==========================================================================
+   BASE — reset, page background, typography helpers, accessibility
+   ========================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  background: var(--bg);
+  scroll-padding-top: calc(var(--header-h) + 36px);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  /* room for the floating dock */
+  padding-bottom: calc(var(--dock-h) + 40px);
+}
+
+h1, h2, h3, p { margin: 0; }
+img { max-width: 100%; display: block; }
+a { color: inherit; }
+button { font: inherit; color: inherit; }
+
+/* Ambient colour behind the glass. Frosted surfaces need something to blur. */
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.ambient i {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.55;
+}
+.ambient .orb-1 { width: 640px; height: 640px; top: -220px; right: -120px; background: radial-gradient(circle, rgba(59,107,255,.55), transparent 70%); }
+.ambient .orb-2 { width: 560px; height: 560px; top: 38%;  left: -220px;  background: radial-gradient(circle, rgba(255,85,0,.38), transparent 70%); }
+.ambient .orb-3 { width: 620px; height: 620px; bottom: -260px; right: 12%; background: radial-gradient(circle, rgba(224,64,138,.30), transparent 70%); }
+
+/* Typography helpers */
+.caps {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+.eyebrow {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.pos { color: var(--win) !important; }
+.neg { color: var(--loss) !important; }
+
+/* Accessibility */
+:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 3px;
+  border-radius: var(--r-pill);
+}
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}

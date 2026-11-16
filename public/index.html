@@ -1,166 +1,210 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#050505" />
-  <meta name="description" content="Kiyosei's live CS2 FACEIT performance tracker." />
-  <title>Kiyosei — FACEIT Tracker</title>
-  <link rel="stylesheet" href="/style.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#020203">
+  <title>KIYOSEI – FACEIT TRACKER</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Styles: tokens first (theme), then base → components → layout → sections -->
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/sections.css">
 </head>
 <body>
-  <div class="page-glow" aria-hidden="true"></div>
-  <div class="app-frame">
-    <aside class="icon-rail" aria-label="Quick navigation">
-      <a class="rail-logo" href="#top" aria-label="Kiyosei home">K</a>
-      <nav>
-        <a class="active" href="#rating" aria-label="Overview"><svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></a>
-        <a href="#history" aria-label="ELO progression"><svg viewBox="0 0 24 24"><path d="M4 18 9 12l4 3 7-9M4 21h16"/></svg></a>
-        <a href="#matches-panel" aria-label="Match history"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg></a>
-        <a href="#form-panel" aria-label="Performance"><svg viewBox="0 0 24 24"><path d="M12 3v18M5 8l7-5 7 5M5 16l7 5 7-5"/></svg></a>
+  <!-- Icon sprite: add a <symbol> here, use it with <svg class="icon"><use href="#i-name"/></svg> -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 6-8 3 3"/><path d="M3 21h18"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="i-top" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></symbol>
+  </svg>
+
+  <div class="ambient" aria-hidden="true"><i class="orb-1"></i><i class="orb-2"></i><i class="orb-3"></i></div>
+
+  <!-- Left icon rail (≥1240px). One button per section: data-nav = section id -->
+  <nav class="rail" aria-label="Section shortcuts">
+    <a class="icon-btn" href="#rating"        data-nav="rating"        title="Dashboard"><svg class="icon"><use href="#i-dashboard"/></svg></a>
+    <a class="icon-btn" href="#history"       data-nav="history"       title="ELO progression"><svg class="icon"><use href="#i-chart"/></svg></a>
+    <a class="icon-btn" href="#matches-panel" data-nav="matches-panel" title="Match history"><svg class="icon"><use href="#i-list"/></svg></a>
+    <a class="icon-btn" href="#form-panel"    data-nav="form-panel"    title="Current form"><svg class="icon"><use href="#i-pulse"/></svg></a>
+  </nav>
+
+  <div class="app">
+    <!-- Top pill navigation -->
+    <header class="topbar">
+      <a class="topbar__brand" href="#rating" aria-label="Back to dashboard">
+        <img src="/assets/faceit/faceit-logo.svg" alt="FACEIT">
+      </a>
+
+      <nav class="topnav" aria-label="Sections">
+        <a class="topnav__link is-active" href="#rating"        data-nav="rating">DASHBOARD</a>
+        <a class="topnav__link"           href="#history"       data-nav="history">ELO</a>
+        <a class="topnav__link"           href="#matches-panel" data-nav="matches-panel">MATCHES</a>
+        <a class="topnav__link"           href="#form-panel"    data-nav="form-panel">FORM</a>
       </nav>
-      <div class="rail-bottom">
-        <img src="/assets/avatar-fallback.jpg" alt="Kiyosei" />
-        <a href="https://www.faceit.com/en/players/kiyosei" target="_blank" rel="noreferrer" aria-label="Open FACEIT profile"><svg viewBox="0 0 24 24"><path d="M8 5h11v11M19 5 5 19"/></svg></a>
+
+      <div class="topbar__right">
+        <span class="pill pill--sm" id="connection-pill">
+          <span class="dot" id="dot"></span>
+          <span id="connection">CONNECTING TO FACEIT</span>
+        </span>
+        <span class="pill pill--sm pill-sync" id="updated">SYNCING</span>
+        <a id="faceit-link" class="pill pill--accent pill-profile" href="https://www.faceit.com/en/players/kiyosei" target="_blank" rel="noreferrer">
+          VIEW PROFILE <svg class="icon" style="width:14px;height:14px"><use href="#i-external"/></svg>
+        </a>
       </div>
-    </aside>
+    </header>
 
-    <div class="workspace" id="top">
-      <header class="topbar">
-        <nav class="top-nav" aria-label="Dashboard sections">
-          <a class="active" href="#rating">Dashboard</a>
-          <a href="#history">ELO History</a>
-          <a href="#matches-panel">Matches</a>
-          <a href="#form-panel">Performance</a>
-          <a href="#rating">Profile</a>
-        </nav>
-        <div class="system-pills">
-          <span id="updated">SYNCING</span>
-          <span id="connection-pill"><i class="dot" id="dot"></i><b id="connection">CONNECTING</b></span>
-        </div>
-      </header>
+    <div class="layout">
+      <!-- ============ MAIN COLUMN ============ -->
+      <div class="layout__main">
 
-      <main>
-        <section class="intro-row">
+        <!-- Hero: profile + ELO score + goal bar -->
+        <section class="glass hero" id="rating" data-section="rating">
           <div>
-            <span class="micro-label">PERSONAL PERFORMANCE CENTER</span>
-            <h1>Your <img src="/assets/avatar-fallback.jpg" alt="" /> FACEIT<br /><em>Dashboard</em></h1>
+            <p class="eyebrow">CS2 · FACEIT COMEBACK TRACKER</p>
+            <h1 class="hero__name">
+              <span class="avatar" id="avatar-frame">
+                <img id="avatar-img" src="/assets/avatar-fallback.jpg" alt="Player Avatar" onerror="this.onerror=null; this.src='/assets/avatar-fallback.jpg';">
+              </span>
+              <span id="nickname">KIYOSEI</span>
+            </h1>
           </div>
-          <label class="search-pill">
-            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
-            <span>Search your performance</span>
-            <kbd>⌘ K</kbd>
-          </label>
+
+          <div class="chip-row">
+            <div class="pill" id="peak-pill" title="All-time peak ELO">
+              <img id="peak-level-icon" class="level-icon" src="/assets/faceit/10.svg" alt="Level">
+              <span class="stat-tag">ALL-TIME PEAK:</span>
+              <span class="stat-val" id="peak-elo">—</span>
+            </div>
+            <div class="pill pill--accent" id="elo-needed-pill">
+              <span id="elo-needed-text">ELO NEEDED +74 TO 2001</span>
+            </div>
+          </div>
+
+          <div class="score" id="current-pill" title="Current FACEIT ELO">
+            <div class="score__row">
+              <div class="score__main">
+                <img id="current-level-icon" class="level-icon level-icon--xl" src="/assets/faceit/9.svg" alt="Level">
+                <div>
+                  <span class="score__value" id="current-elo">1,927</span>
+                  <span class="score__label">CURRENT ELO</span>
+                </div>
+              </div>
+            </div>
+            <!-- Goal bar: ticks and marker are drawn by renderGoalProgress() in app.js -->
+            <div class="goal" id="goal-bar" role="img" aria-label="Progress toward ELO goal">
+              <div class="goal__track"><div class="goal__rest"></div><span class="goal__marker"></span></div>
+              <div class="goal__ticks" id="goal-ticks"></div>
+            </div>
+          </div>
         </section>
 
-        <div class="dashboard-layout">
-          <div class="main-column">
-            <section class="rating-bento" id="rating">
-              <article class="glass-card player-card">
-                <div class="player-topline"><span>FACEIT PLAYER</span><span class="live-label"><i></i> LIVE</span></div>
-                <div class="player-core">
-                  <div class="avatar-wrap" id="avatar-frame">
-                    <img id="avatar-img" src="/assets/avatar-fallback.jpg" alt="Kiyosei's avatar" onerror="this.onerror=null; this.src='/assets/avatar-fallback.jpg';" />
-                  </div>
-                  <div><span class="micro-label">CS2 COMPETITIVE</span><h2 id="nickname">KIYOSEI</h2></div>
-                </div>
-                <div class="elo-hero">
-                  <div><strong id="current-elo">1,927</strong><span>ELO</span></div>
-                  <p id="elo-needed-text">ELO NEEDED +74 TO 2001</p>
-                </div>
-                <div class="spectrum"><span></span></div>
-              </article>
-
-              <article class="glass-card mini-card">
-                <div class="mini-icon orange"><img id="current-level-icon" src="/assets/faceit/9.svg" alt="Current level" /></div>
-                <span>CURRENT RANK</span><strong>LEVEL 9</strong><small>COMPETITIVE RATING</small>
-              </article>
-              <article class="glass-card mini-card">
-                <div class="mini-icon"><img id="peak-level-icon" src="/assets/faceit/10.svg" alt="Peak level" /></div>
-                <span>ALL-TIME PEAK</span><strong id="peak-elo">—</strong><small id="peak-pill">HIGHEST RECORDED ELO</small>
-              </article>
-              <a id="faceit-link" class="faceit-card" href="https://www.faceit.com/en/players/kiyosei" target="_blank" rel="noreferrer">
-                <img src="/assets/faceit/faceit-logo.svg" alt="FACEIT" />
-                <span>OPEN PROFILE</span>
-                <svg viewBox="0 0 20 20"><path d="M7 4h9v9M16 4 5 15"/></svg>
-              </a>
-            </section>
-
-            <section class="glass-card panel" id="history">
-              <div class="panel-head">
-                <div><span class="panel-index">01</span><h2>ELO History</h2></div>
-                <div class="head-actions">
-                  <span class="meta-pill" id="history-count">LOADING</span>
-                  <div class="seg-pills segmented" id="history-range" role="group" aria-label="Filter ELO history">
-                    <button type="button" data-range="7d" aria-pressed="false">7D</button>
-                    <button type="button" data-range="30d" aria-pressed="false">30D</button>
-                    <button type="button" class="active" data-range="all" aria-pressed="true">ALL</button>
-                  </div>
-                </div>
+        <!-- ELO progression -->
+        <section class="glass panel" id="history" data-section="history">
+          <div class="panel__head">
+            <h2 class="panel__title">ELO PROGRESSION</h2>
+            <div class="panel__tools">
+              <div class="seg" id="history-range" role="group" aria-label="Filter ELO history">
+                <button type="button" class="seg__btn" data-range="7d" aria-pressed="false">7D</button>
+                <button type="button" class="seg__btn" data-range="30d" aria-pressed="false">30D</button>
+                <button type="button" class="seg__btn active" data-range="all" aria-pressed="true">ALL</button>
               </div>
-              <div id="elo-chart" class="chart-container"><div class="skeleton chart-skeleton"></div></div>
-              <div id="history-summary" class="history-summary-row"></div>
-              <p class="history-note">ALL-TIME PEAK IS STORED SEPARATELY FROM DATED ELO POINTS. OLDER MATCHES WITHOUT VERIFIED ELO VALUES ARE NOT ESTIMATED.</p>
-            </section>
+              <span id="history-count" class="pill pill--sm">LOADING</span>
+            </div>
+          </div>
+          <div id="elo-chart" class="chart-container"><div class="sk-chart"></div></div>
+          <div id="history-summary" class="history-summary-row"></div>
+          <p class="history-note">ALL-TIME PEAK IS STORED SEPARATELY FROM DATED ELO POINTS. OLDER MATCHES WITHOUT VERIFIED ELO VALUES ARE NOT ESTIMATED.</p>
+        </section>
 
-            <section class="glass-card panel matches-panel" id="matches-panel">
-              <div class="panel-head">
-                <div><span class="panel-index">02</span><h2>Recent Matches</h2></div>
-                <div class="seg-pills segmented" role="group" aria-label="Filter matches">
-                  <button type="button" class="active" data-f="all" aria-pressed="true">ALL</button>
-                  <button type="button" data-f="win" aria-pressed="false">WINS</button>
-                  <button type="button" data-f="loss" aria-pressed="false">LOSSES</button>
-                </div>
-              </div>
-              <div class="match-labels" aria-hidden="true"><span>MATCH</span><span>SCORE / KDA</span><span>PERFORMANCE</span><span>ELO</span></div>
-              <div id="matches" class="matches-list"><div class="skeleton row-skeleton"></div><div class="skeleton row-skeleton"></div><div class="skeleton row-skeleton"></div></div>
-              <button id="matches-load-more" class="load-more" type="button" hidden>LOAD OLDER MATCHES</button>
-            </section>
+        <!-- Match history -->
+        <section class="glass panel" id="matches-panel" data-section="matches-panel">
+          <div class="panel__head">
+            <h2 class="panel__title">MATCH HISTORY</h2>
+            <div class="seg" id="match-filter" role="group" aria-label="Filter matches">
+              <button type="button" class="seg__btn active" data-f="all" aria-pressed="true">ALL</button>
+              <button type="button" class="seg__btn" data-f="win" aria-pressed="false">WINS</button>
+              <button type="button" class="seg__btn" data-f="loss" aria-pressed="false">LOSSES</button>
+            </div>
+          </div>
+          <div id="matches" class="matches-list">
+            <div class="sk-row"></div><div class="sk-row"></div><div class="sk-row"></div>
+          </div>
+          <button id="matches-load-more" class="matches-load-more" type="button" hidden>LOAD OLDER MATCHES</button>
+        </section>
+
+        <!-- FUTURE SLOT: add new full-width sections here (see docs/FRONTEND.md) -->
+      </div>
+
+      <!-- ============ SIDE COLUMN ============ -->
+      <aside class="layout__side">
+        <section class="glass glass--mesh panel form-panel" id="form-panel" data-section="form-panel">
+          <div class="panel__head">
+            <h2 class="panel__title">CURRENT FORM</h2>
+            <span class="pill pill--sm">LAST 7 DAYS</span>
           </div>
 
-          <aside class="side-column">
-            <section class="performance-panel" id="form-panel">
-              <div class="performance-glow" aria-hidden="true"></div>
-              <div class="performance-head">
-                <span class="mode-pill"><img src="/assets/faceit/faceit-logo.svg" alt="" /> CURRENT FORM</span>
-                <span class="close-mark">×</span>
+          <div class="form-body">
+            <div class="form-overview">
+              <div class="form-kd-block">
+                <span class="form-eyebrow">7-DAY PERFORMANCE · K/D</span>
+                <div class="kda-primary">
+                  <span class="kda-big" id="form-kd">—</span>
+                  <span class="kda-unit">K/D</span>
+                  <span id="form-tier" class="form-tier pending">AWAITING DATA</span>
+                </div>
+                <div class="form-total-kda">TOTAL K / D / A <strong id="form-kda-vals">— / — / —</strong></div>
               </div>
-              <span class="micro-label">LAST 7 DAYS</span>
-              <h2>Performance<br />Timeline</h2>
-
-              <div class="rating-display">
-                <div><strong id="form-kd">—</strong><span>K/D</span></div>
-                <span id="form-tier" class="form-tier pending">AWAITING DATA</span>
+              <div class="form-record-block">
+                <span class="form-eyebrow">WIN RATE</span>
+                <strong id="form-winrate" class="form-winrate">—%</strong>
+                <span id="form-record" class="form-record">0W - 0L</span>
               </div>
-              <div class="form-progress"><span></span></div>
-              <div class="total-kda"><span>TOTAL K / D / A</span><strong id="form-kda-vals">— / — / —</strong></div>
+            </div>
 
-              <div class="performance-tabs"><strong>Overview</strong><span>Details</span><span>Updates</span></div>
-              <div class="winrate-card"><div><span>WIN RATE</span><strong id="form-winrate">—%</strong></div><p id="form-record">0W — 0L</p></div>
+            <div class="form-stats-grid">
+              <div class="tile"><span class="tile__label">AVG ADR</span><strong class="tile__value" id="form-adr">—</strong><span class="tile__sub">DAMAGE / ROUND</span></div>
+              <div class="tile"><span class="tile__label">HEADSHOT %</span><strong class="tile__value" id="form-hs">—%</strong><span class="tile__sub">ACCURACY</span></div>
+              <div class="tile"><span class="tile__label">KDA RATIO</span><strong class="tile__value" id="form-kda-ratio">—</strong><span class="tile__sub">(K + A) / D</span></div>
+            </div>
 
-              <div class="form-stats-grid">
-                <div><span>AVG ADR</span><strong id="form-adr">—</strong><small>DAMAGE / ROUND</small></div>
-                <div><span>HEADSHOT</span><strong id="form-hs">—%</strong><small>ACCURACY</small></div>
-                <div><span>KDA</span><strong id="form-kda-ratio">—</strong><small>(K + A) / D</small></div>
+            <div class="form-sequence-card">
+              <div class="seq-head">
+                <span class="form-eyebrow" style="margin:0">PERFORMANCE TIMELINE · LAST 16</span>
+                <span class="seq-count" id="form-streak">—</span>
               </div>
-
-              <div class="timeline-card">
-                <div class="timeline-head"><span>RECENT PERFORMANCE</span><strong id="form-streak">—</strong></div>
-                <div class="form-pills-strip" id="form-pips" aria-label="Recent match performance"></div>
-                <div class="timeline-legend"><span><i class="bot"></i>BOT</span><span><i class="average"></i>AVERAGE</span><span><i class="prime"></i>PRIME+</span><span><i class="pending"></i>PENDING</span></div>
-              </div>
-
-              <a class="panel-action" href="#matches-panel">VIEW MATCH BREAKDOWN <span>↗</span></a>
-            </section>
-            <section class="sync-card glass-card"><i></i><div><strong>LIVE TRACKING ACTIVE</strong><span>REFRESHES EVERY 5 MINUTES</span></div></section>
-          </aside>
-        </div>
-      </main>
-
-      <footer><span>KIYOSEI FACEIT TRACKER</span><span>CS2 · PERFORMANCE ARCHIVE</span><span>POWERED BY FACEIT DATA</span></footer>
+              <div class="form-pills-strip" id="form-pips" aria-label="Recent match sequence"></div>
+              <div class="form-sequence-legend"><span><i class="legend-bot"></i> BOT</span><span><i class="legend-average"></i> AVERAGE</span><span><i class="legend-prime"></i> PRIME+</span><span><i class="legend-pending"></i> PENDING</span></div>
+            </div>
+          </div>
+        </section>
+      </aside>
     </div>
+
+    <footer class="app-footer">
+      <span>KIYOSEI FACEIT TRACKER · CS2</span>
+      <span>SYNCS AUTOMATICALLY WITH FACEIT</span>
+    </footer>
   </div>
+
+  <!-- Floating action dock -->
+  <div class="dock" role="toolbar" aria-label="Quick actions">
+    <button type="button" class="pill pill--primary" id="refresh-btn"><svg class="icon"><use href="#i-refresh"/></svg><span>REFRESH</span></button>
+    <a class="pill pill--green" data-faceit-link href="https://www.faceit.com/en/players/kiyosei" target="_blank" rel="noreferrer"><svg class="icon"><use href="#i-external"/></svg><span>FACEIT <span class="pill-label-long">PROFILE</span></span></a>
+    <a class="pill" href="#rating" id="to-top"><svg class="icon"><use href="#i-top"/></svg><span>TOP</span></a>
+  </div>
+
   <div id="notice" class="notice-toast" role="status" aria-live="polite"></div>
   <script src="/app.js"></script>
+  <script src="/js/ui.js"></script>
 </body>
 </html>
