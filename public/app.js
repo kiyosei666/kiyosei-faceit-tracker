@@ -20,6 +20,14 @@ function stat(stats, ...keys) {
   return null;
 }
 
+// Epoch seconds, epoch milliseconds (number or numeric string) or ISO string -> Date | null
+function toDate(raw) {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = Number(raw);
+  const date = Number.isFinite(n) ? new Date(Math.abs(n) < 1e12 ? n * 1000 : n) : new Date(raw);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
 function number(value, digits = 1) {
   const n = Number(value);
   return Number.isFinite(n) ? n.toFixed(digits) : "—";
@@ -161,10 +169,7 @@ function renderCurrentForm(matches) {
   const weekMatches = matches.filter((match) => {
     const raw = match.finished_at || match.date;
     if (!raw) return false;
-    const timestamp = Number(raw);
-    const finishedAt = Number.isFinite(timestamp)
-      ? (timestamp < 1e12 ? timestamp * 1000 : timestamp)
-      : new Date(raw).getTime();
+    const finishedAt = toDate(raw)?.getTime();
     return Number.isFinite(finishedAt) && finishedAt >= weekStart;
   });
   const withStats = weekMatches.filter((match) => {
@@ -244,8 +249,7 @@ function renderCurrentForm(matches) {
     const individualKd = matchKd(match);
     const matchTier = getFormTier(individualKd);
     const dateRaw = match.finished_at || match.date;
-    const date = dateRaw ? new Date(Number(dateRaw) < 1e12 ? Number(dateRaw) * 1000 : dateRaw)
-      .toLocaleDateString([], { month: "short", day: "numeric" }) : "";
+    const date = toDate(dateRaw)?.toLocaleDateString([], { month: "short", day: "numeric" }) || "";
     const rating = Number.isFinite(individualKd) ? `${individualKd.toFixed(2)} K/D · ${matchTier.label}` : "STATS PENDING";
     const tooltip = `${match.map || "Match"} · ${rating} · ${date}`;
     const kdText = Number.isFinite(individualKd) ? individualKd.toFixed(2) : "—";
@@ -259,7 +263,7 @@ function renderCurrentForm(matches) {
 
 function matchRow(match) {
   const dateValue = match.finished_at || match.date;
-  const date = dateValue ? new Date(Number(dateValue) * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Recent";
+  const date = toDate(dateValue)?.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) || "Recent";
   const result = (match.outcome || "Unknown").toUpperCase();
   const isWin = result === "WIN";
   const isLoss = result === "LOSS";
@@ -489,6 +493,7 @@ async function loadHistory(range = historyRange) {
       const peakLvl = getSkillLevel(peakElo);
       $("peak-level-icon").src = getLevelIcon(peakLvl, peakLvl >= 11);
       $("peak-level-icon").alt = `Level ${peakLvl}`;
+      $("peak-level-icon").removeAttribute("data-pending");
       $("peak-pill").title = data.peakEloSource === "user_reported"
         ? "All-time peak · historical value previously reported by you; exact date unavailable"
         : "All-time peak · highest value in recorded ELO data";
@@ -496,6 +501,7 @@ async function loadHistory(range = historyRange) {
       $("peak-elo").textContent = "—";
       $("peak-level-icon").src = getLevelIcon(getSkillLevel(currentElo));
       $("peak-level-icon").alt = "Current FACEIT level";
+      $("peak-level-icon").removeAttribute("data-pending");
       $("peak-pill").title = "No historical peak data available yet";
     }
 
@@ -537,6 +543,7 @@ async function load() {
     const currLvl = Number.isFinite(skillLevel) ? skillLevel : getSkillLevel(currentElo);
     $("current-level-icon").src = getLevelIcon(currLvl, currLvl >= 11);
     $("current-level-icon").alt = `Level ${currLvl}`;
+    $("current-level-icon").removeAttribute("data-pending");
 
     renderGoalProgress(currentElo);
 
