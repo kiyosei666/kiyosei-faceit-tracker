@@ -221,6 +221,7 @@ a.pill--primary:hover, button.pill--primary:hover { background: #f1f1f4; border-
 
 /* ---- Level icon --------------------------------------------------------- */
 .level-icon { width: 22px; height: 22px; flex: none; display: block; }
+.level-icon[data-pending] { visibility: hidden; }
 .level-icon--xl { width: 60px; height: 60px; filter: drop-shadow(0 0 18px var(--accent-glow)); }
 
 /* ---- Empty & skeleton --------------------------------------------------- */

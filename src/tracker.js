@@ -13,7 +13,7 @@ function parseHistoryTimestamp(value) {
   if (value instanceof Date) {
     return Number.isFinite(value.getTime()) ? new Date(value.getTime()) : null;
   }
-  if (typeof value === "number" || (typeof value === "string" && /^\\d+(?:\\.\\d+)?$/.test(value.trim()))) {
+  if (typeof value === "number" || (typeof value === "string" && /^\d+(?:\.\d+)?$/.test(value.trim()))) {
     let timestamp = Number(value);
     if (!Number.isFinite(timestamp)) return null;
     if (Math.abs(timestamp) < 1e12) timestamp *= 1000; // epoch seconds -> milliseconds

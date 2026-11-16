@@ -18,8 +18,8 @@ Front end only: `public/`. Nothing here touches the API, database or data shapes
 - **More/less frosted glass:** `--glass-panel`, `--blur-md`, `--blur-lg`.
 - **Rounder/squarer:** `--r-*` radii.
 - **Change display font:** `--font-display` + the Google Fonts `<link>` in `index.html`.
-  Coolvetica is intentionally not used: its free licence covers desktop/static use only, not web fonts
-  (see `public/fonts/read-this.html`).
+  Coolvetica is intentionally not used and its files were removed: the free licence covers desktop/static
+  use only, not web fonts. Only use a webfont you hold a web licence for (or an open-licence one).
 - **Goal bar range:** uses `BASELINE`, `TARGETS`, `GOAL` at the top of `app.js`; ticks redraw automatically.
 - **K/D rank colours:** `--tier-*` tokens. Rank names/thresholds stay in `getFormTier()` in `app.js`.
 
