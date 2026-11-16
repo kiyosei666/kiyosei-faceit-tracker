@@ -7,6 +7,8 @@ let matchOffset = 0;
 let hasMoreMatches = false;
 let loadingMoreMatches = false;
 let filter = "all";
+const MATCH_PAGE = 10;      // rows revealed per "show more" click (keeps the page scrolling naturally)
+let visibleMatches = MATCH_PAGE;
 let historyRange = "all";
 let toastTimer = null;
 let currentElo = null;
@@ -115,6 +117,27 @@ function getEloNeededText(elo) {
   }
   const nextHundred = (Math.floor(val / 100) + 1) * 100;
   return `ELO NEEDED +${nextHundred - val} TO ${nextHundred}`;
+}
+
+// ==========================================================================
+// FEATURE EVENT BUS
+// Feature modules (js/features/*.js) never call the API. They listen for
+// "kiyosei:data" and render from this snapshot. Add new features there.
+function publishData() {
+  const apiLevel = Number(currentPlayer?.skillLevel);
+  const detail = {
+    ready: Number.isFinite(currentElo),
+    elo: Number.isFinite(currentElo) ? currentElo : null,
+    level: Number.isFinite(apiLevel) ? apiLevel : getSkillLevel(currentElo),
+    peakElo,
+    matches: recorded.slice(),          // newest first, as returned by /api/history
+    totalMatches: Number(window.matchTotal || recorded.length),
+    targets: TARGETS.slice(),
+    baseline: BASELINE,
+    goal: GOAL
+  };
+  window.KiyoseiApp.state = detail;
+  document.dispatchEvent(new CustomEvent("kiyosei:data", { detail }));
 }
 
 // ==========================================================================
@@ -306,23 +329,33 @@ function matchRow(match) {
   </article>`;
 }
 
-function renderMatches(append = false) {
+function matchesForFilter() {
+  return recorded.filter((m) => filter === "all" || (m.outcome || "").toLowerCase() === filter);
+}
+
+function renderMatches() {
   const root = $("matches");
+  const more = $("matches-load-more");
   if (!recorded.length) {
     root.innerHTML = '<p class="empty">NO MATCHES SAVED YET. THEY WILL SYNC AUTOMATICALLY.</p>';
+    if (more) more.hidden = true;
     return;
   }
-  const rows = recorded.filter((m) => filter === "all" || (m.outcome || "").toLowerCase() === filter);
-  const markup = rows.length
-    ? rows.map(matchRow).join("")
+  const rows = matchesForFilter();
+  const shown = rows.slice(0, visibleMatches);
+  root.innerHTML = rows.length
+    ? shown.map(matchRow).join("")
     : `<p class="empty">NO ${filter.toUpperCase()} IN RECORDED MATCHES.</p>`;
-  if (append) root.insertAdjacentHTML("beforeend", markup);
-  else root.innerHTML = markup;
-  const more = $("matches-load-more");
   if (more) {
-    more.hidden = !hasMoreMatches;
+    const hiddenLocal = Math.max(0, rows.length - shown.length);
+    const remoteLeft = Math.max(0, (window.matchTotal || 0) - recorded.length);
+    more.hidden = !(hiddenLocal > 0 || hasMoreMatches);
     more.disabled = loadingMoreMatches;
-    more.textContent = loadingMoreMatches ? "LOADING…" : `LOAD OLDER MATCHES · ${Math.max(0, (window.matchTotal || 0) - recorded.length)} REMAINING`;
+    more.textContent = loadingMoreMatches
+      ? "LOADING…"
+      : hiddenLocal > 0
+        ? `SHOW MORE MATCHES · ${hiddenLocal} LOADED`
+        : `LOAD OLDER MATCHES · ${remoteLeft} REMAINING`;
   }
 }
 
@@ -468,6 +501,7 @@ async function loadHistory(range = historyRange) {
       $("elo-chart").innerHTML = '<p class="empty">CONNECT A DATABASE TO SAVE ELO SNAPSHOTS.</p>';
       $("matches").innerHTML = '<p class="empty">MATCH HISTORY NEEDS DATABASE CONNECTION.</p>';
       renderCurrentForm([]);
+      publishData();
       return;
     }
 
@@ -504,6 +538,8 @@ async function loadHistory(range = historyRange) {
       $("peak-level-icon").removeAttribute("data-pending");
       $("peak-pill").title = "No historical peak data available yet";
     }
+
+    publishData();
 
   } catch (error) {
     $("history-count").textContent = "OFFLINE";
@@ -546,6 +582,7 @@ async function load() {
     $("current-level-icon").removeAttribute("data-pending");
 
     renderGoalProgress(currentElo);
+    publishData();
 
     // ELO Needed Pill
     $("elo-needed-text").textContent = getEloNeededText(currentElo);
@@ -563,6 +600,7 @@ async function load() {
     $("matches").innerHTML = '<p class="empty">COULD NOT LOAD FACEIT DATA. CHECK SERVER API KEY.</p>';
     $("elo-chart").innerHTML = '<p class="empty">COULD NOT LOAD FACEIT DATA.</p>';
     renderCurrentForm([]);
+    publishData();
   }
 }
 
@@ -570,6 +608,7 @@ async function load() {
 document.querySelectorAll("#match-filter button").forEach((btn) => {
   btn.addEventListener("click", () => {
     filter = btn.dataset.f;
+    visibleMatches = MATCH_PAGE;
     document.querySelectorAll("#match-filter button").forEach((b) => {
       b.classList.toggle("active", b === btn);
       b.setAttribute("aria-pressed", b === btn);
@@ -592,7 +631,7 @@ async function loadMoreMatches() {
     matchOffset += next.length;
     hasMoreMatches = Boolean(data.hasMoreMatches);
     window.matchTotal = Number(data.totalMatches || window.matchTotal || recorded.length);
-    renderMatches(true);
+    publishData();
   } catch (error) {
     toast(error.message, { error: true });
   } finally {
@@ -613,11 +652,23 @@ document.querySelectorAll("#history-range button").forEach((btn) => {
   });
 });
 
-$("matches-load-more")?.addEventListener("click", loadMoreMatches);
+async function showMoreMatches() {
+  if (loadingMoreMatches) return;
+  if (visibleMatches < matchesForFilter().length) {
+    visibleMatches += MATCH_PAGE;
+    renderMatches();
+    return;
+  }
+  await loadMoreMatches();
+  visibleMatches += MATCH_PAGE;
+  renderMatches();
+}
+
+$("matches-load-more")?.addEventListener("click", showMoreMatches);
 
 // Initial load & 5 minute periodic sync
+// Hook for ui.js (refresh button) and feature modules. No new data access.
+window.KiyoseiApp = { refresh: load, state: null };
+
 load();
 setInterval(load, 5 * 60 * 1000);
-
-// Hook for ui.js (refresh button). No new data access: it re-runs load().
-window.KiyoseiApp = { refresh: load };
