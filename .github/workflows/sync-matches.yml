@@ -1,0 +1,69 @@
+name: Sync FACEIT matches
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: faceit-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Call FACEIT sync endpoint
+        env:
+          SYNC_URL: ${{ secrets.SYNC_URL }}
+          SYNC_SECRET: ${{ secrets.SYNC_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${SYNC_URL:-}" || -z "${SYNC_SECRET:-}" ]]; then
+            echo "::error::SYNC_URL and SYNC_SECRET must be configured as GitHub Actions repository secrets."
+            exit 1
+          fi
+
+          endpoint="${SYNC_URL%/}/api/sync"
+
+          for attempt in 1 2 3 4 5; do
+            echo "Sync attempt ${attempt}/5"
+
+            if http_code="$(curl \
+              --silent \
+              --show-error \
+              --fail \
+              --output /dev/null \
+              --write-out '%{http_code}' \
+              --request POST \
+              --header "x-sync-secret: ${SYNC_SECRET}" \
+              --connect-timeout 20 \
+              --max-time 120 \
+              "${endpoint}")"; then
+              echo "FACEIT sync completed successfully (HTTP ${http_code})."
+              exit 0
+            else
+              curl_status=$?
+              echo "Sync attempt ${attempt} failed (curl exit ${curl_status}, HTTP ${http_code:-unavailable})."
+            fi
+
+            if [[ "${attempt}" -lt 5 ]]; then
+              case "${attempt}" in
+                1) delay=20 ;;
+                2) delay=40 ;;
+                3) delay=60 ;;
+                4) delay=90 ;;
+              esac
+              echo "Retrying in ${delay} seconds."
+              sleep "${delay}"
+            fi
+          done
+
+          echo "::error::FACEIT sync failed after 5 attempts."
+          exit 1
