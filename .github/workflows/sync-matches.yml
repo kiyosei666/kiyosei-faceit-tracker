@@ -17,7 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Call FACEIT sync endpoint
+      - name: Resolve and display sync endpoint
+        id: target
         env:
           SYNC_URL: ${{ secrets.SYNC_URL }}
           SYNC_SECRET: ${{ secrets.SYNC_SECRET }}
@@ -33,27 +34,43 @@ jobs:
           base_url="${SYNC_URL%/}"
           base_url="${base_url%/api/sync}"
           endpoint="${base_url}/api/sync"
+
           echo "Target endpoint: ${endpoint}"
+          echo "::notice title=Sync target::${endpoint}"
+          printf 'endpoint=%s\n' "${endpoint}" >> "$GITHUB_OUTPUT"
+
+      - name: Call FACEIT sync endpoint
+        env:
+          ENDPOINT: ${{ steps.target.outputs.endpoint }}
+          SYNC_SECRET: ${{ secrets.SYNC_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
 
           for attempt in 1 2 3 4 5; do
             echo "Sync attempt ${attempt}/5"
 
-            if http_code="$(curl \
+            curl_status=0
+            http_code="$(curl \
               --silent \
               --show-error \
-              --fail \
-              --output /dev/null \
+              --output response.txt \
               --write-out '%{http_code}' \
               --request POST \
               --header "x-sync-secret: ${SYNC_SECRET}" \
               --connect-timeout 20 \
               --max-time 120 \
-              "${endpoint}")"; then
+              "${ENDPOINT}")" || curl_status=$?
+
+            if [[ "${curl_status}" -eq 0 && "${http_code}" =~ ^2[0-9][0-9]$ ]]; then
               echo "FACEIT sync completed successfully (HTTP ${http_code})."
               exit 0
-            else
-              curl_status=$?
-              echo "Sync attempt ${attempt} failed (curl exit ${curl_status}, HTTP ${http_code:-unavailable})."
+            fi
+
+            echo "Sync attempt ${attempt} failed (curl exit ${curl_status}, HTTP ${http_code:-no response})."
+            if [[ -s response.txt ]]; then
+              echo "Server response:"
+              cat response.txt
             fi
 
             if [[ "${attempt}" -lt 5 ]]; then
