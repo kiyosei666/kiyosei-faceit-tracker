@@ -88,6 +88,11 @@
 
 .coach-report { margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--glass-border); }
 .coach-report[hidden] { display: none; }
+.coach__headline { margin: 0 0 8px; font-family: var(--font-display); font-size: 13px; letter-spacing: 0.1em; color: var(--text); }
+.coach__text { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-primary); }
+.coach__note--inline { margin-top: 10px; }
+.coach-report--match { margin: 18px 0 0; padding: 18px 0 0; border-top: 1px solid var(--glass-border); border-bottom: 0; }
+.coach-delta--none { color: var(--text-dim); }
 .coach-report__group { margin-top: 14px; }
 .coach-report__group h3 { margin: 0 0 6px; font-family: var(--font-display); font-size: 11px; letter-spacing: 0.12em; color: var(--accent-soft); }
 .coach-report__group ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; color: var(--text-primary); }

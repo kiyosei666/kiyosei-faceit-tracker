@@ -206,7 +206,7 @@
           </div>
         </section>
 
-        <!-- AI Coach: live insights today; daily AI report slot for later (see js/features/coach.js) -->
+        <!-- AI Coach: backend stats engine + Gemini report + post-match report (see js/features/coach.js) -->
         <section class="glass panel coach" id="ai-coach" data-section="ai-coach">
           <div class="panel__head">
             <h2 class="panel__title">AI COACH</h2>
@@ -214,7 +214,8 @@
           </div>
           <div id="coach-report" class="coach-report" hidden></div>
           <div id="coach-body"><div class="sk-row"></div></div>
-          <p class="coach__note">CALCULATED IN YOUR BROWSER FROM YOUR SAVED MATCHES (LAST 10 VS EARLIER). THESE ARE SIGNALS FROM SMALL SAMPLES, NOT PROOF. NO AI MODEL IS USED YET.</p>
+          <div id="coach-match" class="coach-report coach-report--match" hidden></div>
+          <p class="coach__note" id="coach-note">CALCULATED IN YOUR BROWSER FROM YOUR SAVED MATCHES (LAST 10 VS EARLIER) WHILE THE STATS ENGINE LOADS. SMALL SAMPLES ARE SIGNALS, NOT PROOF. NO AI IS USED IN THIS VIEW.</p>
         </section>
       </aside>
     </div>
