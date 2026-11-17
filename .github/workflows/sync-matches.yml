@@ -30,7 +30,10 @@ jobs:
             exit 1
           fi
 
-          endpoint="${SYNC_URL%/}/api/sync"
+          base_url="${SYNC_URL%/}"
+          base_url="${base_url%/api/sync}"
+          endpoint="${base_url}/api/sync"
+          echo "Target endpoint: ${endpoint}"
 
           for attempt in 1 2 3 4 5; do
             echo "Sync attempt ${attempt}/5"
