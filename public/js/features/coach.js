@@ -1,20 +1,19 @@
 /* ==========================================================================
    AI COACH panel.
 
-   Two layers:
-   1) LIVE INSIGHTS (works today): plain calculations in the browser comparing
-      your last 10 saved matches with your own earlier matches. No AI model is
-      involved, and the wording only says "suggests" — small samples are signals,
-      never verdicts. Missing stats are skipped, never treated as zero.
-   2) DAILY REPORT slot (for the future backend): call
-      KiyoseiCoach.renderReport(report) with
-        { date: "2026-11-16", summary: "…", strengths: [..], weaknesses: [..],
-          patterns: [..], priorities: [..] }   (each list item is a string or { text })
-      or set REPORT_ENDPOINT below once an endpoint exists. Anything that isn't
-      valid JSON in that shape is ignored.
+   Three layers:
+   1) ENGINE (server): GET /api/coach/overview returns the deterministic stats
+      analysis (windows, maps, role tendencies, insights with evidence) plus an
+      optional Gemini report. Every number shown here comes from the backend
+      engine; Gemini only interprets them and its output is validated server-side.
+   2) POST-MATCH: GET /api/coach/match/latest compares the newest match with the
+      matches before it and adds a Gemini post-match report when available.
+   3) FALLBACK: if the server endpoints are unavailable, the original in-browser
+      comparison (last 10 vs earlier) is shown. No AI is involved there.
    ========================================================================== */
 (function () {
-  const REPORT_ENDPOINT = null;   // e.g. "/api/coach/latest" — keep null until the backend exists
+  const OVERVIEW_ENDPOINT = "/api/coach/overview", MATCH_ENDPOINT = "/api/coach/match/latest";
+  let serverLoaded = false;
   const RECENT = 10, MIN_RECENT = 5, MIN_BASE = 10, MAP_MIN_GAMES = 3;
 
   const pick = (s, ...keys) => {
@@ -172,7 +171,7 @@
       .filter(Boolean).slice(0, 6);
   }
 
-  function renderReport(report) {
+  function renderReport(report, modeLabel) {
     const box = document.getElementById("coach-report");
     const mode = document.getElementById("coach-mode");
     if (!box) return false;
@@ -182,33 +181,127 @@
       const li = listOf(items);
       return li.length ? `<div class="coach-report__group"><h3>${title}</h3><ul>${li.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div>` : "";
     };
-    box.innerHTML = `<p class="coach__summary">${esc(report.summary)}</p>
+    const note = (title, text) => (typeof text === "string" && text.trim() ? `<div class="coach-report__group"><h3>${title}</h3><p class="coach__text">${esc(text)}</p></div>` : "");
+    box.innerHTML = `${report.headline ? `<h3 class="coach__headline">${esc(report.headline)}</h3>` : ""}<p class="coach__summary">${esc(report.summary)}</p>
+      ${note("RECENT FORM", report.recentForm)}${note("ROLE PROFILE", report.roleProfile)}
       ${section("STRENGTHS", report.strengths)}${section("WEAKNESSES", report.weaknesses)}
-      ${section("PATTERNS", report.patterns)}${section("PRIORITIES", report.priorities)}`;
+      ${section("PATTERNS", report.patterns)}${section("PRIORITIES", report.priorities)}${section("CAVEATS", report.caveats)}`;
     box.hidden = false;
-    if (mode) mode.textContent = report.date ? `AI REPORT · ${String(report.date).slice(0, 10)}` : "AI REPORT";
+    if (mode) mode.textContent = modeLabel || (report.date ? `AI REPORT · ${String(report.date).slice(0, 10)}` : "AI REPORT");
     return true;
   }
 
-  async function loadReport() {
-    if (!REPORT_ENDPOINT) return;
+  const SIG = { clear: "CLEAR", likely: "LIKELY", possible: "POSSIBLE", none: "NO CHANGE" };
+  const pctf = (v, d = 0) => (v === null || v === undefined ? "—" : (v * 100).toFixed(d) + "%");
+
+  function engineRows(a) {
+    const w = a.windows && a.windows.last20 && a.windows.last20.vsEarlier;
+    if (!w) return "";
+    const fmt = { kd: (v) => v.toFixed(2), adr: (v) => v.toFixed(1), kr: (v) => v.toFixed(2), hs: (v) => v.toFixed(0) + "%", winRate: (v) => pctf(v, 1) };
+    return ["kd", "adr", "kr", "hs", "winRate"].map((k) => {
+      const c = w[k];
+      if (!c) return "";
+      if (c.status) return `<div class="coach-row"><span class="coach-row__label">${esc(c.label)}</span><span class="coach-row__now">—</span><span class="coach-row__base">LAST 20</span><span class="coach-delta coach-delta--none">SMALL SAMPLE</span></div>`;
+      const trend = c.significance === "none" ? "steady" : c.delta > 0 ? "up" : "down";
+      const arrow = trend === "up" ? "▲" : trend === "down" ? "▼" : "●";
+      return `<div class="coach-row"><span class="coach-row__label">${esc(c.label)}</span><span class="coach-row__now">${fmt[k](c.recent)}</span><span class="coach-row__base">VS ${fmt[k](c.earlier)}</span><span class="coach-delta coach-delta--${trend}">${arrow} ${SIG[c.significance] || ""}</span></div>`;
+    }).join("");
+  }
+
+  function renderEngine(a) {
+    const box = document.getElementById("coach-body");
+    if (!box) return;
+    const o = a.overall || {};
+    const tile = (label, v, sub) => `<div class="tile"><span class="tile__label">${label}</span><strong class="tile__value">${v}</strong><span class="tile__sub">${sub}</span></div>`;
+    const kd = o.kd && o.kd.supported !== false ? o.kd.value.toFixed(2) : "—";
+    const adr = o.adr && o.adr.supported !== false ? o.adr.value.toFixed(1) : "—";
+    const wr = o.winRate && o.winRate.supported !== false ? pctf(o.winRate.value, 1) : "—";
+    const role = a.role && a.role.status === "ok"
+      ? tile("PLAYSTYLE TENDENCY", esc(a.role.profile.toUpperCase()), `${esc(a.role.confidence.level.toUpperCase())} CONFIDENCE · FROM STATS, NOT POSITIONAL DATA`)
+      : tile("PLAYSTYLE TENDENCY", "—", "NOT ENOUGH STAT INDICATORS");
+    const last = (k) => { const m = a.windows && a.windows[k] && a.windows[k].metrics && a.windows[k].metrics.kd; return m && m.supported !== false ? m.value.toFixed(2) : "—"; };
+    const insights = Array.isArray(a.insights) ? a.insights : [];
+    const group = (title, type) => {
+      const items = insights.filter((i) => i.type === type).slice(0, 4);
+      return items.length ? `<div class="coach-report__group"><h3>${title}</h3><ul>${items.map((i) => `<li>${esc(i.statement)}</li>`).join("")}</ul></div>` : "";
+    };
+    const limits = insights.find((i) => i.id === "data.limits");
+    const trendItems = insights.filter((i) => i.type === "trend").slice(0, 3);
+    box.innerHTML = `<div class="coach__tiles">${tile("K/D · ALL", kd, `${a.meta.matchesWithStats} MATCHES WITH STATS`)}${tile("ADR · ALL", adr, "ROUND-WEIGHTED")}${tile("WIN RATE · ALL", wr, `${a.meta.totalMatches} MATCHES`)}${role}</div>
+      <div class="coach-rows" aria-label="Last 20 matches compared with earlier matches">${engineRows(a)}</div>
+      <p class="coach__note coach__note--inline">K/D LAST 10 / 20 / 50: ${last("last10")} / ${last("last20")} / ${last("last50")}. SHIFT LABELS COME FROM A STATISTICAL TEST, NOT A FIXED THRESHOLD.</p>
+      ${trendItems.length ? `<div class="coach-report__group"><h3>RECENT FORM</h3><ul>${trendItems.map((i) => `<li>${esc(i.statement)}</li>`).join("")}</ul></div>` : ""}
+      ${group("STRENGTHS", "strength")}${group("WEAKNESSES", "weakness")}${group("PATTERNS", "pattern")}
+      ${limits ? `<p class="coach__note">${esc(limits.statement.toUpperCase())}</p>` : ""}`;
+  }
+
+  function aiToReport(ai, analysis) {
+    if (!ai || !ai.report || typeof ai.report !== "object") return null;
+    const r = ai.report;
+    const t = (arr) => (Array.isArray(arr) ? arr.map((x) => (x && x.text) || x) : []);
+    return {
+      headline: r.headline, summary: r.assessment, recentForm: r.recentForm, roleProfile: r.roleProfile,
+      strengths: t(r.strengths), weaknesses: t(r.weaknesses), patterns: t(r.recurringPatterns),
+      priorities: (Array.isArray(r.recommendations) ? r.recommendations : []).map((x) => `${x.action} — ${x.rationale}${x.trackMetric ? ` (Track: ${x.trackMetric})` : ""}`),
+      caveats: Array.isArray(r.caveats) ? r.caveats : []
+    };
+  }
+
+  function renderMatch(data) {
+    const box = document.getElementById("coach-match");
+    if (!box) return;
+    if (!data || !data.match) { box.hidden = true; box.innerHTML = ""; return; }
+    const m = data.match;
+    const rows = Object.values(m.compare || {}).filter((c) => !c.status).map((c) => {
+      const cls = c.band === "well above usual" ? "up" : c.band === "well below usual" ? "down" : "steady";
+      return `<div class="coach-row"><span class="coach-row__label">${esc(c.label)}</span><span class="coach-row__now">${c.value}</span><span class="coach-row__base">USUAL ${c.baselineMean}</span><span class="coach-delta coach-delta--${cls}">${esc(c.band.toUpperCase())}</span></div>`;
+    }).join("");
+    const ai = data.ai && data.ai.report;
+    const list = (title, items) => (Array.isArray(items) && items.length ? `<div class="coach-report__group"><h3>${title}</h3><ul>${items.map((i) => `<li>${esc(i.text || i)}</li>`).join("")}</ul></div>` : "");
+    const result = m.match.outcome ? `${m.match.outcome.toUpperCase()}${m.match.score ? " " + esc(m.match.score) : ""}` : "RESULT UNKNOWN";
+    box.innerHTML = `<h3 class="coach__headline">LATEST MATCH · ${esc(String(m.match.map || "").toUpperCase())} · ${result}</h3>
+      ${ai ? `<p class="coach__summary">${esc(ai.headline)} ${esc(ai.summary)}</p>` : ""}
+      ${rows ? `<div class="coach-rows">${rows}</div><p class="coach__note coach__note--inline">COMPARED WITH THE ${m.baseline.size} MATCHES BEFORE IT.</p>` : '<p class="coach__note">NO STORED STATS FOR THIS MATCH YET.</p>'}
+      ${ai ? list("WENT WELL", ai.wentWell) + list("TO IMPROVE", ai.toImprove) + (ai.takeaway ? `<div class="coach-report__group"><h3>TAKEAWAY</h3><p class="coach__text">${esc(ai.takeaway)}</p></div>` : "") : ""}`;
+    box.hidden = false;
+  }
+
+  async function getJson(url) {
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok || !(res.headers.get("content-type") || "").includes("json")) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  async function loadServer() {
     try {
-      const res = await fetch(REPORT_ENDPOINT, { headers: { Accept: "application/json" } });
-      if (!res.ok || !(res.headers.get("content-type") || "").includes("json")) return;
-      const data = await res.json();
-      renderReport(data && (data.report || data));
-    } catch { /* optional feature: stay on live insights */ }
+      const data = await getJson(OVERVIEW_ENDPOINT);
+      if (!data || !data.analysis || !data.analysis.meta || !data.analysis.meta.totalMatches) return;
+      serverLoaded = true;
+      renderEngine(data.analysis);
+      const report = aiToReport(data.ai, data.analysis);
+      const mode = document.getElementById("coach-mode");
+      const noteEl = document.getElementById("coach-note");
+      if (report) {
+        renderReport(report, "AI COACH");
+      } else if (mode) {
+        mode.textContent = "ENGINE INSIGHTS";
+        const box = document.getElementById("coach-report");
+        if (box && data.ai && data.ai.message) { box.hidden = false; box.innerHTML = `<p class="coach__note">${esc(String(data.ai.message).toUpperCase())}</p>`; }
+      }
+      if (noteEl) noteEl.textContent = "ALL NUMBERS ARE COMPUTED BY THE BACKEND STATS ENGINE FROM YOUR SAVED MATCHES. THE AI ONLY INTERPRETS THEM, AND ITS NUMBERS ARE VALIDATED AGAINST THE ENGINE. IT SEES STATISTICS ONLY, NEVER YOUR GAMEPLAY OR DEMOS. SMALL SAMPLES ARE SIGNALS, NOT PROOF.";
+    } catch { return; /* keep the in-browser fallback */ }
+    try { renderMatch(await getJson(MATCH_ENDPOINT)); } catch { renderMatch(null); }
   }
 
   function render(detail) {
     const body = document.getElementById("coach-body");
-    if (!body) return;
+    if (!body || serverLoaded) return;
     body.innerHTML = renderInsights(computeInsights(detail && detail.matches, detail));
   }
 
   if (typeof document !== "undefined") {
     document.addEventListener("kiyosei:data", (e) => { render(e.detail); });
-    loadReport();
+    loadServer();
     window.KiyoseiCoach = { renderReport, computeInsights };
   }
   if (typeof module !== "undefined" && module.exports) module.exports = { computeInsights, summarize };
