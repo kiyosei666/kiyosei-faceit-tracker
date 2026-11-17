@@ -5,6 +5,8 @@ const { faceitGet, getPlayerOutcome } = require("./src/faceit");
 const { persistMatches, readTrackingData } = require("./src/tracker");
 const { syncRecent, importCareer, syncStatus } = require("./src/sync");
 const crypto = require("crypto");
+const statsService = require("./src/stats/service");
+const coach = require("./src/coach");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -99,6 +101,39 @@ app.post("/api/sync", requireSecret, async (_req, res) => {
 });
 app.post("/api/career/import", requireSecret, async (req, res) => {
   try { res.json(await importCareer({ maxPages: Math.min(Number(req.query.pages) || 5, 20) })); } catch (e) { fail(res, e); }
+});
+
+// ---- Stats engine (read-only) and AI coach -------------------------------
+app.get("/api/stats", async (_req, res) => {
+  try { res.json(await statsService.getAnalysis()); } catch (e) { fail(res, e); }
+});
+app.get("/api/stats/inventory", async (_req, res) => {
+  try { res.json(await statsService.getInventory()); } catch (e) { fail(res, e); }
+});
+app.get("/api/stats/match/:id", async (req, res) => {
+  try {
+    const result = await statsService.getMatchAnalysis(String(req.params.id));
+    if (!result) return res.status(404).json({ error: "Match not found." });
+    res.json(result);
+  } catch (e) { fail(res, e); }
+});
+app.get("/api/coach/overview", async (_req, res) => {
+  try { res.json(await coach.getOverview()); } catch (e) { fail(res, e); }
+});
+app.get("/api/coach/match/:id", async (req, res) => {
+  try {
+    const result = await coach.getMatchReport(String(req.params.id));
+    if (!result) return res.status(404).json({ error: "Match not found." });
+    res.json(result);
+  } catch (e) { fail(res, e); }
+});
+// Protected: force a fresh overview + latest-match report (still bounded by COACH_DAILY_LIMIT).
+app.post("/api/coach/generate", requireSecret, async (_req, res) => {
+  try {
+    const overview = await coach.getOverview({ force: true });
+    const match = await coach.getMatchReport("latest", { force: true });
+    res.json({ overview: overview.ai.status, match: match ? match.ai.status : "no_matches" });
+  } catch (e) { fail(res, e); }
 });
 
 app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
