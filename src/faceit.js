@@ -59,17 +59,41 @@ async function faceitGet(endpoint, { retries = 3, baseDelayMs = 800, timeoutMs }
   throw lastError;
 }
 
+// FACEIT lists a team's members under different keys depending on the endpoint
+// ("roster" on match details, "players" on player history). Accept all of them.
+function teamMembers(team) {
+  if (!team || typeof team !== "object") return [];
+  return ["roster", "players", "playing_players"].flatMap((key) => (Array.isArray(team[key]) ? team[key] : []));
+}
+
 function getPlayerOutcome(match, playerId) {
   if (!match || typeof match !== "object") return "Unknown";
   const winner = match.results?.winner;
   const teams = match.teams && typeof match.teams === "object" ? match.teams : {};
   for (const [teamName, team] of Object.entries(teams)) {
-    const roster = Array.isArray(team?.roster) ? team.roster : [];
-    if (roster.some((member) => member && member.player_id === playerId)) {
+    if (teamMembers(team).some((member) => member && member.player_id === playerId)) {
       return winner ? (winner === teamName ? "Win" : "Loss") : "Unknown";
     }
   }
   return "Unknown";
+}
+
+/**
+ * Fallback: the player's own match stats carry a "Result" flag ("1" = won, "0" = lost).
+ * Returns "Unknown" for anything that is not clearly one or the other.
+ */
+function outcomeFromPlayerStats(stats) {
+  if (!stats || typeof stats !== "object") return "Unknown";
+  const raw = String(stats.Result ?? "").trim().toLowerCase();
+  if (raw === "1" || raw === "win" || raw === "won") return "Win";
+  if (raw === "0" || raw === "loss" || raw === "lost" || raw === "lose") return "Loss";
+  return "Unknown";
+}
+
+/** Outcome from the history item first; if that cannot tell, from the player's stats. */
+function resolveOutcome(match, playerId, stats) {
+  const fromMatch = getPlayerOutcome(match, playerId);
+  return fromMatch !== "Unknown" ? fromMatch : outcomeFromPlayerStats(stats);
 }
 
 /**
@@ -156,6 +180,8 @@ function classifyMatchStats(parsed, error = null) {
 module.exports = {
   faceitGet,
   getPlayerOutcome,
+  outcomeFromPlayerStats,
+  resolveOutcome,
   getPlayerMatchStats,
   classifyMatchStats,
   normalizeTimeoutMs

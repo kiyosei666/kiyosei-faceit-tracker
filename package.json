@@ -9,8 +9,9 @@
     "test": "node test/unit.test.js",
     "test:unit": "node test/unit.test.js",
     "test:frontend": "node test/frontend-features.test.js",
-    "test:integration": "node test/import-integration.test.js && node test/peak-migration.test.js",
-    "test:all": "node test/unit.test.js && node test/frontend-features.test.js && node test/import-integration.test.js && node test/peak-migration.test.js"
+    "test:outcome": "node test/outcome.test.js",
+    "test:integration": "node test/import-integration.test.js && node test/peak-migration.test.js && node test/repair-outcomes.test.js",
+    "test:all": "node test/unit.test.js && node test/outcome.test.js && node test/frontend-features.test.js && node test/import-integration.test.js && node test/peak-migration.test.js && node test/repair-outcomes.test.js"
   },
   "engines": {
     "node": ">=20"

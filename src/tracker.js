@@ -1,5 +1,5 @@
 const { pool, ensureSchema } = require("./db");
-const { faceitGet, getPlayerOutcome, getPlayerMatchStats, classifyMatchStats } = require("./faceit");
+const { faceitGet, resolveOutcome, getPlayerMatchStats, classifyMatchStats } = require("./faceit");
 
 // The 1,680 comeback baseline. Inserted once as the first snapshot and never
 // updated or deleted by any code path.
@@ -128,7 +128,7 @@ async function persistMatches(historyItems, playerId, nickname, currentElo) {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        ON CONFLICT (match_id) DO NOTHING`,
       [match.match_id, match.finished_at || match.started_at || null, matchMap,
-       getPlayerOutcome(match, playerId), score, matchStats ? JSON.stringify(matchStats) : null,
+       resolveOutcome(match, playerId, matchStats), score, matchStats ? JSON.stringify(matchStats) : null,
        statsStatus, eloBefore, eloAfter, eloChange]
     );
     saved++;

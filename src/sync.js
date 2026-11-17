@@ -1,5 +1,5 @@
 const { pool, ensureSchema } = require("./db");
-const { faceitGet, getPlayerOutcome, getPlayerMatchStats, classifyMatchStats } = require("./faceit");
+const { faceitGet, resolveOutcome, getPlayerMatchStats, classifyMatchStats } = require("./faceit");
 const { persistMatches } = require("./tracker");
 
 const NICKNAME = () => process.env.FACEIT_NICKNAME || "kiyosei";
@@ -237,7 +237,7 @@ async function importCareer({ maxPages = 5, delayMs = 250, backfillPending = tru
             finishedAt: item.finished_at || null,
             startedAt: item.started_at || null,
             map,
-            outcome: getPlayerOutcome(item, player.player_id),
+            outcome: resolveOutcome(item, player.player_id, stats),
             score,
             stats: stats ? JSON.stringify(stats) : null,
             statsStatus
