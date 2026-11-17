@@ -50,15 +50,16 @@ Feature files only listen to that event; they never call the API. To add a featu
 
 | Module | What it does |
 |---|---|
+| `goal-bar.js` | Goal bar that moves with you: road to 2,000 → road back to your peak → next hundred past it. Reads `peakElo` from the data; nothing hardcoded |
 | `level-ring.js` | Ring around the level icon = progress inside the current FACEIT level (bands in `LEVEL_STARTS`) |
 | `streak.js` | Current win/loss streak + last-10 dots from saved matches |
 | `coach.js` | AI Coach panel. **Live insights** (last 10 vs earlier matches, best/worst map, ELO pace) are plain calculations, not an AI model |
-| `celebrations.js` | Confetti + banner when you cross a target in `TARGETS` or move up a level |
+| `celebrations.js` | Confetti + banner when you cross a target in `TARGETS` (then every 100 above 2,000), move up a level, or set a NEW ALL-TIME PEAK |
 
 ### Milestone celebrations
 Each milestone fires once per browser (stored in `localStorage` key `kiyosei:milestones:v1`).
 The first visit records current progress silently. Preview any time with `?celebrate=1900`
-(or `?celebrate=level`), or `KiyoseiCelebrate.demo("2,000 ELO")` in the console.
+(or `?celebrate=level`, `?celebrate=peak`), or `KiyoseiCelebrate.demo("2,000 ELO")` in the console.
 To replay: `localStorage.removeItem("kiyosei:milestones:v1")`.
 
 ### AI Coach: connecting a real daily report later
@@ -74,3 +75,8 @@ Invalid or non-JSON responses are ignored and the panel stays on live insights. 
 - Two-column layout: follows the main column; FORM and COACH (side column) light up when clicked and stay lit until you scroll ~100px.
 - One-column layout: all sections take part in page order.
 - The only scroll offset is `[data-section] { scroll-margin-top }` in `layout.css`.
+
+## All-time peak
+The peak shown is always the highest of: your ELO snapshots, ELO recorded on matches, and the stored record
+(`elo_records`, 2,274, source `user_confirmed` after migration 005). When you pass it, the tracker's own recorded
+ELO becomes the new peak automatically. FACEIT's official API does not provide peak ELO or ELO history.

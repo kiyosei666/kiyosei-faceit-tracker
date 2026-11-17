@@ -119,6 +119,7 @@
             </div>
             <!-- Goal bar: ticks and marker are drawn by renderGoalProgress() in app.js -->
             <div class="goal" id="goal-bar" role="img" aria-label="Progress toward ELO goal">
+              <div class="goal__head"><span class="goal__label" id="goal-label"></span><span class="goal__remaining" id="goal-remaining"></span></div>
               <div class="goal__track"><div class="goal__rest"></div><span class="goal__marker"></span></div>
               <div class="goal__ticks" id="goal-ticks"></div>
             </div>
@@ -233,6 +234,7 @@
 
   <div id="notice" class="notice-toast" role="status" aria-live="polite"></div>
   <!-- Feature modules listen for "kiyosei:data" (published by app.js); load them first -->
+  <script src="/js/features/goal-bar.js"></script>
   <script src="/js/features/level-ring.js"></script>
   <script src="/js/features/streak.js"></script>
   <script src="/js/features/coach.js"></script>

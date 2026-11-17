@@ -141,24 +141,6 @@ function publishData() {
 }
 
 // ==========================================================================
-// GOAL BAR – presentation only. Uses BASELINE / TARGETS / GOAL defined above.
-function renderGoalProgress(elo) {
-  const bar = $("goal-bar");
-  if (!bar) return;
-  const span = GOAL - BASELINE;
-  const pct = (v) => Math.max(0, Math.min(100, ((v - BASELINE) / span) * 100));
-  const value = Number(elo);
-  bar.style.setProperty("--p", Number.isFinite(value) ? pct(value).toFixed(2) : 0);
-  const marks = [BASELINE, ...TARGETS.filter((t) => t > BASELINE && t < GOAL), GOAL];
-  $("goal-ticks").innerHTML = marks.map((m) =>
-    `<span class="goal__tick${Number.isFinite(value) && value >= m ? " is-reached" : ""}" style="left:${pct(m)}%">${m.toLocaleString()}</span>`
-  ).join("");
-  bar.setAttribute("aria-label", Number.isFinite(value)
-    ? `${value.toLocaleString()} ELO, ${BASELINE.toLocaleString()} start, ${GOAL.toLocaleString()} goal`
-    : "Progress toward ELO goal");
-}
-
-// ==========================================================================
 // CURRENT FORM – LAST 7 DAYS, PERFORMANCE-BASED
 // Missing FACEIT stats are excluded rather than silently converted to zero.
 function formNumber(value) {
@@ -372,9 +354,11 @@ function renderHistorySummary(pts, range, allTimePeak, peakSource) {
   const progress = first && latest ? latest.v - first.v : null;
   const periodLabel = range === "all" ? "START OF TRACKING" : "START OF PERIOD";
   const progressLabel = range === "all" ? "COMEBACK PROGRESS" : "PERIOD PROGRESS";
-  const peakNote = peakSource === "user_reported"
-    ? "HISTORICAL PEAK · PLAYER REPORTED · DATE UNKNOWN"
-    : "HIGHEST ELO IN SAVED RECORDS";
+  const peakNote = peakSource === "user_confirmed"
+    ? "HISTORICAL PEAK · CONFIRMED BY PLAYER · DATE UNKNOWN"
+    : peakSource === "user_reported"
+      ? "HISTORICAL PEAK · PLAYER REPORTED · DATE UNKNOWN"
+      : "HIGHEST ELO IN SAVED RECORDS";
   sum.innerHTML = `
     <div class="tile"><span class="tile__label">${periodLabel}</span><strong class="tile__value">${first ? first.v.toLocaleString() : "—"}</strong></div>
     <div class="tile"><span class="tile__label">LATEST SNAPSHOT</span><strong class="tile__value">${latest ? latest.v.toLocaleString() : "—"}</strong></div>
@@ -528,9 +512,11 @@ async function loadHistory(range = historyRange) {
       $("peak-level-icon").src = getLevelIcon(peakLvl, peakLvl >= 11);
       $("peak-level-icon").alt = `Level ${peakLvl}`;
       $("peak-level-icon").removeAttribute("data-pending");
-      $("peak-pill").title = data.peakEloSource === "user_reported"
-        ? "All-time peak · historical value previously reported by you; exact date unavailable"
-        : "All-time peak · highest value in recorded ELO data";
+      $("peak-pill").title = data.peakEloSource === "user_confirmed"
+        ? "All-time peak · confirmed by you; exact date unavailable"
+        : data.peakEloSource === "user_reported"
+          ? "All-time peak · historical value previously reported by you; exact date unavailable"
+          : "All-time peak · highest value in recorded ELO data";
     } else {
       $("peak-elo").textContent = "—";
       $("peak-level-icon").src = getLevelIcon(getSkillLevel(currentElo));
@@ -581,7 +567,6 @@ async function load() {
     $("current-level-icon").alt = `Level ${currLvl}`;
     $("current-level-icon").removeAttribute("data-pending");
 
-    renderGoalProgress(currentElo);
     publishData();
 
     // ELO Needed Pill

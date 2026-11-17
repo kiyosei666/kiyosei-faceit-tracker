@@ -32,6 +32,11 @@
 }
 .ring-caption:empty { display: none; }
 
+/* Goal bar when you are at / past your all-time peak */
+.goal--peak .goal__track { box-shadow: 0 0 26px rgba(255, 176, 32, 0.55); }
+.goal--peak .goal__label { color: var(--hue-amber); }
+.goal--peak .goal__marker { background: var(--hue-amber); box-shadow: 0 0 16px var(--hue-amber); }
+
 /* ---- 2. Streak pill ----------------------------------------------------- */
 .streak[hidden] { display: none; }
 .streak__badge {
