@@ -155,6 +155,25 @@ function mount(app, { requireSecret }) {
     }
   });
 
+  // On-demand Gemini briefing for the active match. The server keeps the API key private.
+  const briefing = require("./briefing");
+  app.post("/api/live/briefing", async (_req, res) => {
+    try {
+      if (!(await ensureSchema())) return res.status(503).json({ error: "Live detection database unavailable." });
+      const active = (await pool.query(
+        "SELECT * FROM faceit_live_matches WHERE closed_reason IS NULL ORDER BY created_at DESC LIMIT 1"
+      )).rows[0];
+      if (!active) return res.status(409).json({ error: "No active FACEIT match detected yet. Queue first and wait for match detection." });
+      const result = await briefing.generate(active);
+      res.set("Cache-Control", "no-store");
+      return res.json(result);
+    } catch (error) {
+      const status = error.status || (error.code === "not_configured" ? 503 : 502);
+      console.error("[live] Gemini briefing failed:", error.message);
+      return res.status(status).json({ error: error.message || "Could not generate the live briefing." });
+    }
+  });
+
   app.get("/api/live", requireSecret, async (_req, res) => {
     try {
       if (!(await ensureSchema())) return res.status(503).json({ error: "Database is not configured." });
