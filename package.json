@@ -11,9 +11,10 @@
     "test:frontend": "node test/frontend-features.test.js",
     "test:outcome": "node test/outcome.test.js",
     "test:integration": "node test/import-integration.test.js && node test/peak-migration.test.js && node test/repair-outcomes.test.js",
-    "test:all": "node test/unit.test.js && node test/outcome.test.js && node test/frontend-features.test.js && node test/import-integration.test.js && node test/peak-migration.test.js && node test/repair-outcomes.test.js && node test/stats-engine.test.js && node test/coach.test.js",
+    "test:all": "node test/unit.test.js && node test/outcome.test.js && node test/frontend-features.test.js && node test/import-integration.test.js && node test/peak-migration.test.js && node test/repair-outcomes.test.js && node test/stats-engine.test.js && node test/coach.test.js && npm run test:live",
     "test:stats": "node test/stats-engine.test.js",
-    "test:coach": "node test/coach.test.js"
+    "test:coach": "node test/coach.test.js",
+    "test:live": "node test/live-states.test.js && node test/live-webhook.test.js && node test/live-server-smoke.test.js"
   },
   "engines": {
     "node": ">=20"

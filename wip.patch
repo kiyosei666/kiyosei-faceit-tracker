@@ -1,0 +1,1963 @@
+﻿diff --git a/.gitignore b/.gitignore
+index 1625333..5212906 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -2,3 +2,4 @@ node_modules/
+ .env
+ .DS_Store
+ *.log
++validation-report.json
+diff --git a/migrations/001_baseline.sql b/migrations/001_baseline.sql
+new file mode 100644
+index 0000000..0686b67
+--- /dev/null
++++ b/migrations/001_baseline.sql
+@@ -0,0 +1,19 @@
++-- Baseline: mirrors the tables the app already created at runtime.
++-- Idempotent on purpose so existing Supabase data is untouched.
++CREATE TABLE IF NOT EXISTS elo_snapshots (
++  id BIGSERIAL PRIMARY KEY,
++  elo INTEGER NOT NULL,
++  captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
++);
++CREATE TABLE IF NOT EXISTS faceit_matches (
++  match_id TEXT PRIMARY KEY,
++  finished_at BIGINT,
++  map TEXT,
++  outcome TEXT,
++  score TEXT,
++  stats JSONB,
++  elo_before INTEGER,
++  elo_after INTEGER,
++  elo_change INTEGER,
++  saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
++);
+diff --git a/migrations/002_sync_tables.sql b/migrations/002_sync_tables.sql
+new file mode 100644
+index 0000000..ee4bf07
+--- /dev/null
++++ b/migrations/002_sync_tables.sql
+@@ -0,0 +1,19 @@
++-- Additive only: new tables plus nullable columns. Nothing is dropped or rewritten.
++CREATE TABLE IF NOT EXISTS sync_state (
++  key TEXT PRIMARY KEY,
++  value JSONB NOT NULL DEFAULT '{}'::jsonb,
++  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
++);
++CREATE TABLE IF NOT EXISTS sync_runs (
++  id BIGSERIAL PRIMARY KEY,
++  kind TEXT NOT NULL,
++  status TEXT NOT NULL DEFAULT 'running',
++  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
++  finished_at TIMESTAMPTZ,
++  matches_seen INTEGER NOT NULL DEFAULT 0,
++  matches_saved INTEGER NOT NULL DEFAULT 0,
++  error TEXT
++);
++CREATE INDEX IF NOT EXISTS sync_runs_started_idx ON sync_runs (started_at DESC);
++ALTER TABLE faceit_matches ADD COLUMN IF NOT EXISTS source TEXT;
++ALTER TABLE faceit_matches ADD COLUMN IF NOT EXISTS started_at BIGINT;
+diff --git a/package-lock.json b/package-lock.json
+new file mode 100644
+index 0000000..c475fae
+--- /dev/null
++++ b/package-lock.json
+@@ -0,0 +1,990 @@
++{
++  "name": "kiyosei-faceit-tracker",
++  "version": "1.0.0",
++  "lockfileVersion": 3,
++  "requires": true,
++  "packages": {
++    "": {
++      "name": "kiyosei-faceit-tracker",
++      "version": "1.0.0",
++      "dependencies": {
++        "express": "^4.21.2",
++        "pg": "^8.16.3"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/accepts": {
++      "version": "1.3.8",
++      "resolved": "https://registry.npmjs.org/accepts/-/accepts-1.3.8.tgz",
++      "integrity": "sha512-PYAthTa2m2VKxuvSD3DPC/Gy+U+sOA1LAuT8mkmRuvw+NACSaeXEQ+NHcVF7rONl6qcaxV3Uuemwawk+7+SJLw==",
++      "license": "MIT",
++      "dependencies": {
++        "mime-types": "~2.1.34",
++        "negotiator": "0.6.3"
++      },
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/array-flatten": {
++      "version": "1.1.1",
++      "resolved": "https://registry.npmjs.org/array-flatten/-/array-flatten-1.1.1.tgz",
++      "integrity": "sha512-PCVAQswWemu6UdxsDFFX/+gVeYqKAod3D3UVm91jHwynguOwAvYPhx8nNlM++NqRcK6CxxpUafjmhIdKiHibqg==",
++      "license": "MIT"
++    },
++    "node_modules/body-parser": {
++      "version": "1.20.9",
++      "resolved": "https://registry.npmjs.org/body-parser/-/body-parser-1.20.9.tgz",
++      "integrity": "sha512-FISIQxV5u91Y9gvuFq3q/tA/qTqLJn3AhRcEvyozyhJTh5OBFFtv827AdHU7Rbyct4r+Ba1/99oFa1Y3yuFsdw==",
++      "license": "MIT",
++      "dependencies": {
++        "bytes": "~3.1.2",
++        "content-type": "~1.0.5",
++        "debug": "2.6.9",
++        "depd": "2.0.0",
++        "destroy": "~1.2.0",
++        "http-errors": "~2.0.1",
++        "iconv-lite": "~0.4.24",
++        "on-finished": "~2.4.1",
++        "qs": "~6.16.0",
++        "raw-body": "~2.5.3",
++        "type-is": "~1.6.18",
++        "unpipe": "~1.0.0"
++      },
++      "engines": {
++        "node": ">= 0.8",
++        "npm": "1.2.8000 || >= 1.4.16"
++      }
++    },
++    "node_modules/bytes": {
++      "version": "3.1.2",
++      "resolved": "https://registry.npmjs.org/bytes/-/bytes-3.1.2.tgz",
++      "integrity": "sha512-/Nf7TyzTx6S3yRJObOAV7956r8cr2+Oj8AC5dt8wSP3BQAoeX58NoHyCU8P8zGkNXStjTSi6fzO6F0pBdcYbEg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.8"
++      }
++    },
++    "node_modules/call-bind-apply-helpers": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/call-bind-apply-helpers/-/call-bind-apply-helpers-1.0.2.tgz",
++      "integrity": "sha512-Sp1ablJ0ivDkSzjcaJdxEunN5/XvksFJ2sMBFfq6x0ryhQV/2b/KwFe21cMpmHtPOSij8K99/wSfoEuTObmuMQ==",
++      "license": "MIT",
++      "dependencies": {
++        "es-errors": "^1.3.0",
++        "function-bind": "^1.1.2"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/call-bound": {
++      "version": "1.0.4",
++      "resolved": "https://registry.npmjs.org/call-bound/-/call-bound-1.0.4.tgz",
++      "integrity": "sha512-+ys997U96po4Kx/ABpBCqhA9EuxJaQWDQg7295H4hBphv3IZg0boBKuwYpt4YXp6MZ5AmZQnU/tyMTlRpaSejg==",
++      "license": "MIT",
++      "dependencies": {
++        "call-bind-apply-helpers": "^1.0.2",
++        "get-intrinsic": "^1.3.0"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/content-disposition": {
++      "version": "0.5.4",
++      "resolved": "https://registry.npmjs.org/content-disposition/-/content-disposition-0.5.4.tgz",
++      "integrity": "sha512-FveZTNuGw04cxlAiWbzi6zTAL/lhehaWbTtgluJh4/E95DqMwTmha3KZN1aAWA8cFIhHzMZUvLevkw5Rqk+tSQ==",
++      "license": "MIT",
++      "dependencies": {
++        "safe-buffer": "5.2.1"
++      },
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/content-type": {
++      "version": "1.0.5",
++      "resolved": "https://registry.npmjs.org/content-type/-/content-type-1.0.5.tgz",
++      "integrity": "sha512-nTjqfcBFEipKdXCv4YDQWCfmcLZKm81ldF0pAopTvyrFGVbcR6P/VAAd5G7N+0tTr8QqiU0tFadD6FK4NtJwOA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/cookie": {
++      "version": "0.7.2",
++      "resolved": "https://registry.npmjs.org/cookie/-/cookie-0.7.2.tgz",
++      "integrity": "sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/cookie-signature": {
++      "version": "1.0.7",
++      "resolved": "https://registry.npmjs.org/cookie-signature/-/cookie-signature-1.0.7.tgz",
++      "integrity": "sha512-NXdYc3dLr47pBkpUCHtKSwIOQXLVn8dZEuywboCOJY/osA0wFSLlSawr3KN8qXJEyX66FcONTH8EIlVuK0yyFA==",
++      "license": "MIT"
++    },
++    "node_modules/debug": {
++      "version": "2.6.9",
++      "resolved": "https://registry.npmjs.org/debug/-/debug-2.6.9.tgz",
++      "integrity": "sha512-bC7ElrdJaJnPbAP+1EotYvqZsb3ecl5wi6Bfi6BJTUcNowp6cvspg0jXznRTKDjm/E7AdgFBVeAPVMNcKGsHMA==",
++      "license": "MIT",
++      "dependencies": {
++        "ms": "2.0.0"
++      }
++    },
++    "node_modules/depd": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/depd/-/depd-2.0.0.tgz",
++      "integrity": "sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.8"
++      }
++    },
++    "node_modules/destroy": {
++      "version": "1.2.0",
++      "resolved": "https://registry.npmjs.org/destroy/-/destroy-1.2.0.tgz",
++      "integrity": "sha512-2sJGJTaXIIaR1w4iJSNoN0hnMY7Gpc/n8D4qSCJw8QqFWXf7cuAgnEHxBpweaVcPevC2l3KpjYCx3NypQQgaJg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.8",
++        "npm": "1.2.8000 || >= 1.4.16"
++      }
++    },
++    "node_modules/dunder-proto": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/dunder-proto/-/dunder-proto-1.0.1.tgz",
++      "integrity": "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==",
++      "license": "MIT",
++      "dependencies": {
++        "call-bind-apply-helpers": "^1.0.1",
++        "es-errors": "^1.3.0",
++        "gopd": "^1.2.0"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/ee-first": {
++      "version": "1.1.1",
++      "resolved": "https://registry.npmjs.org/ee-first/-/ee-first-1.1.1.tgz",
++      "integrity": "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==",
++      "license": "MIT"
++    },
++    "node_modules/encodeurl": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/encodeurl/-/encodeurl-2.0.1.tgz",
++      "integrity": "sha512-Ev/hIyePLZtpL98x562lvPtenrUfGr0lfaf44HFZ+hDEwso7ccV9QAZrEVLg0hxNAzygaAFxy2dYaAKKM0G06A==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.8"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/express"
++      }
++    },
++    "node_modules/es-define-property": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/es-define-property/-/es-define-property-1.0.1.tgz",
++      "integrity": "sha512-e3nRfgfUZ4rNGL232gUgX06QNyyez04KdjFrF+LTRoOXmrOgFKDg4BCdsjW8EnT69eqdYGmRpJwiPVYNrCaW3g==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/es-errors": {
++      "version": "1.3.0",
++      "resolved": "https://registry.npmjs.org/es-errors/-/es-errors-1.3.0.tgz",
++      "integrity": "sha512-Zf5H2Kxt2xjTvbJvP2ZWLEICxA6j+hAmMzIlypy4xcBg1vKVnx89Wy0GbS+kf5cwCVFFzdCFh2XSCFNULS6csw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/es-object-atoms": {
++      "version": "1.1.2",
++      "resolved": "https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-1.1.2.tgz",
++      "integrity": "sha512-HWcBoN6NileqtSydK2FqHbS/LoDd2pqrnQHLyJzBj4kOp/ky2MWMN694xOfkK8/SnUsW2DH7EfyVlydKCsm1Zw==",
++      "license": "MIT",
++      "dependencies": {
++        "es-errors": "^1.3.0"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/escape-html": {
++      "version": "1.0.3",
++      "resolved": "https://registry.npmjs.org/escape-html/-/escape-html-1.0.3.tgz",
++      "integrity": "sha512-NiSupZ4OeuGwr68lGIeym/ksIZMJodUGOSCZ/FSnTxcrekbvqrgdUxlJOMpijaKZVjAJrWrGs/6Jy8OMuyj9ow==",
++      "license": "MIT"
++    },
++    "node_modules/etag": {
++      "version": "1.8.1",
++      "resolved": "https://registry.npmjs.org/etag/-/etag-1.8.1.tgz",
++      "integrity": "sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/express": {
++      "version": "4.22.3",
++      "resolved": "https://registry.npmjs.org/express/-/express-4.22.3.tgz",
++      "integrity": "sha512-Bdcs4+3qlpVlx2NRn6fgX2Ue2/gGRaPeawebgclM0ERSCqDpA+owF1fdPwjJUTAJWMTuAaxjDf+hzb0/4eKvvw==",
++      "license": "MIT",
++      "dependencies": {
++        "accepts": "~1.3.8",
++        "array-flatten": "1.1.1",
++        "body-parser": "~1.20.5",
++        "content-disposition": "~0.5.4",
++        "content-type": "~1.0.4",
++        "cookie": "~0.7.1",
++        "cookie-signature": "~1.0.6",
++        "debug": "2.6.9",
++        "depd": "2.0.0",
++        "encodeurl": "~2.0.0",
++        "escape-html": "~1.0.3",
++        "etag": "~1.8.1",
++        "finalhandler": "~1.3.1",
++        "fresh": "~0.5.2",
++        "http-errors": "~2.0.0",
++        "merge-descriptors": "1.0.3",
++        "methods": "~1.1.2",
++        "on-finished": "~2.4.1",
++        "parseurl": "~1.3.3",
++        "path-to-regexp": "~0.1.13",
++        "proxy-addr": "~2.0.7",
++        "qs": "~6.16.0",
++        "range-parser": "~1.2.1",
++        "safe-buffer": "5.2.1",
++        "send": "~0.19.0",
++        "serve-static": "~1.16.2",
++        "setprototypeof": "1.2.0",
++        "statuses": "~2.0.1",
++        "type-is": "~1.6.18",
++        "utils-merge": "1.0.1",
++        "vary": "~1.1.2"
++      },
++      "engines": {
++        "node": ">= 0.10.0"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/express"
++      }
++    },
++    "node_modules/finalhandler": {
++      "version": "1.3.2",
++      "resolved": "https://registry.npmjs.org/finalhandler/-/finalhandler-1.3.2.tgz",
++      "integrity": "sha512-aA4RyPcd3badbdABGDuTXCMTtOneUCAYH/gxoYRTZlIJdF0YPWuGqiAsIrhNnnqdXGswYk6dGujem4w80UJFhg==",
++      "license": "MIT",
++      "dependencies": {
++        "debug": "2.6.9",
++        "encodeurl": "~2.0.0",
++        "escape-html": "~1.0.3",
++        "on-finished": "~2.4.1",
++        "parseurl": "~1.3.3",
++        "statuses": "~2.0.2",
++        "unpipe": "~1.0.0"
++      },
++      "engines": {
++        "node": ">= 0.8"
++      }
++    },
++    "node_modules/forwarded": {
++      "version": "0.2.0",
++      "resolved": "https://registry.npmjs.org/forwarded/-/forwarded-0.2.0.tgz",
++      "integrity": "sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/fresh": {
++      "version": "0.5.2",
++      "resolved": "https://registry.npmjs.org/fresh/-/fresh-0.5.2.tgz",
++      "integrity": "sha512-zJ2mQYM18rEFOudeV4GShTGIQ7RbzA7ozbU9I/XBpm7kqgMywgmylMwXHxZJmkVoYkna9d2pVXVXPdYTP9ej8Q==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/function-bind": {
++      "version": "1.1.2",
++      "resolved": "https://registry.npmjs.org/function-bind/-/function-bind-1.1.2.tgz",
++      "integrity": "sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==",
++      "license": "MIT",
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/get-intrinsic": {
++      "version": "1.3.0",
++      "resolved": "https://registry.npmjs.org/get-intrinsic/-/get-intrinsic-1.3.0.tgz",
++      "integrity": "sha512-9fSjSaos/fRIVIp+xSJlE6lfwhES7LNtKaCBIamHsjr2na1BiABJPo0mOjjz8GJDURarmCPGqaiVg5mfjb98CQ==",
++      "license": "MIT",
++      "dependencies": {
++        "call-bind-apply-helpers": "^1.0.2",
++        "es-define-property": "^1.0.1",
++        "es-errors": "^1.3.0",
++        "es-object-atoms": "^1.1.1",
++        "function-bind": "^1.1.2",
++        "get-proto": "^1.0.1",
++        "gopd": "^1.2.0",
++        "has-symbols": "^1.1.0",
++        "hasown": "^2.0.2",
++        "math-intrinsics": "^1.1.0"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/get-proto": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/get-proto/-/get-proto-1.0.1.tgz",
++      "integrity": "sha512-sTSfBjoXBp89JvIKIefqw7U2CCebsc74kiY6awiGogKtoSGbgjYE/G/+l9sF3MWFPNc9IcoOC4ODfKHfxFmp0g==",
++      "license": "MIT",
++      "dependencies": {
++        "dunder-proto": "^1.0.1",
++        "es-object-atoms": "^1.0.0"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/gopd": {
++      "version": "1.2.0",
++      "resolved": "https://registry.npmjs.org/gopd/-/gopd-1.2.0.tgz",
++      "integrity": "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/has-symbols": {
++      "version": "1.1.0",
++      "resolved": "https://registry.npmjs.org/has-symbols/-/has-symbols-1.1.0.tgz",
++      "integrity": "sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/hasown": {
++      "version": "2.0.4",
++      "resolved": "https://registry.npmjs.org/hasown/-/hasown-2.0.4.tgz",
++      "integrity": "sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==",
++      "license": "MIT",
++      "dependencies": {
++        "function-bind": "^1.1.2"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/http-errors": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/http-errors/-/http-errors-2.0.1.tgz",
++      "integrity": "sha512-4FbRdAX+bSdmo4AUFuS0WNiPz8NgFt+r8ThgNWmlrjQjt1Q7ZR9+zTlce2859x4KSXrwIsaeTqDoKQmtP8pLmQ==",
++      "license": "MIT",
++      "dependencies": {
++        "depd": "~2.0.0",
++        "inherits": "~2.0.4",
++        "setprototypeof": "~1.2.0",
++        "statuses": "~2.0.2",
++        "toidentifier": "~1.0.1"
++      },
++      "engines": {
++        "node": ">= 0.8"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/express"
++      }
++    },
++    "node_modules/iconv-lite": {
++      "version": "0.4.24",
++      "resolved": "https://registry.npmjs.org/iconv-lite/-/iconv-lite-0.4.24.tgz",
++      "integrity": "sha512-v3MXnZAcvnywkTUEZomIActle7RXXeedOR31wwl7VlyoXO4Qi9arvSenNQWne1TcRwhCL1HwLI21bEqdpj8/rA==",
++      "license": "MIT",
++      "dependencies": {
++        "safer-buffer": ">= 2.1.2 < 3"
++      },
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/inherits": {
++      "version": "2.0.4",
++      "resolved": "https://registry.npmjs.org/inherits/-/inherits-2.0.4.tgz",
++      "integrity": "sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==",
++      "license": "ISC"
++    },
++    "node_modules/ipaddr.js": {
++      "version": "1.9.1",
++      "resolved": "https://registry.npmjs.org/ipaddr.js/-/ipaddr.js-1.9.1.tgz",
++      "integrity": "sha512-0KI/607xoxSToH7GjN1FfSbLoU0+btTicjsQSWQlh/hZykN8KpmMf7uYwPW3R+akZ6R/w18ZlXSHBYXiYUPO3g==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.10"
++      }
++    },
++    "node_modules/math-intrinsics": {
++      "version": "1.1.0",
++      "resolved": "https://registry.npmjs.org/math-intrinsics/-/math-intrinsics-1.1.0.tgz",
++      "integrity": "sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/media-typer": {
++      "version": "0.3.0",
++      "resolved": "https://registry.npmjs.org/media-typer/-/media-typer-0.3.0.tgz",
++      "integrity": "sha512-dq+qelQ9akHpcOl/gUVRTxVIOkAJ1wR3QAvb4RsVjS8oVoFjDGTc679wJYmUmknUF5HwMLOgb5O+a3KxfWapPQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/merge-descriptors": {
++      "version": "1.0.3",
++      "resolved": "https://registry.npmjs.org/merge-descriptors/-/merge-descriptors-1.0.3.tgz",
++      "integrity": "sha512-gaNvAS7TZ897/rVaZ0nMtAyxNyi/pdbjbAwUpFQpN70GqnVfOiXpeUUMKRBmzXaSQ8DdTX4/0ms62r2K+hE6mQ==",
++      "license": "MIT",
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/methods": {
++      "version": "1.1.2",
++      "resolved": "https://registry.npmjs.org/methods/-/methods-1.1.2.tgz",
++      "integrity": "sha512-iclAHeNqNm68zFtnZ0e+1L2yUIdvzNoauKU4WBA3VvH/vPFieF7qfRlwUZU+DA9P9bPXIS90ulxoUoCH23sV2w==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/mime": {
++      "version": "1.6.0",
++      "resolved": "https://registry.npmjs.org/mime/-/mime-1.6.0.tgz",
++      "integrity": "sha512-x0Vn8spI+wuJ1O6S7gnbaQg8Pxh4NNHb7KSINmEWKiPE4RKOplvijn+NkmYmmRgP68mc70j2EbeTFRsrswaQeg==",
++      "license": "MIT",
++      "bin": {
++        "mime": "cli.js"
++      },
++      "engines": {
++        "node": ">=4"
++      }
++    },
++    "node_modules/mime-db": {
++      "version": "1.52.0",
++      "resolved": "https://registry.npmjs.org/mime-db/-/mime-db-1.52.0.tgz",
++      "integrity": "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/mime-types": {
++      "version": "2.1.35",
++      "resolved": "https://registry.npmjs.org/mime-types/-/mime-types-2.1.35.tgz",
++      "integrity": "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw==",
++      "license": "MIT",
++      "dependencies": {
++        "mime-db": "1.52.0"
++      },
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/ms": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/ms/-/ms-2.0.0.tgz",
++      "integrity": "sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A==",
++      "license": "MIT"
++    },
++    "node_modules/negotiator": {
++      "version": "0.6.3",
++      "resolved": "https://registry.npmjs.org/negotiator/-/negotiator-0.6.3.tgz",
++      "integrity": "sha512-+EUsqGPLsM+j/zdChZjsnX51g4XrHFOIXwfnCVPGlQk/k5giakcKsuxCObBRu6DSm9opw/O6slWbJdghQM4bBg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/object-inspect": {
++      "version": "1.13.4",
++      "resolved": "https://registry.npmjs.org/object-inspect/-/object-inspect-1.13.4.tgz",
++      "integrity": "sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/on-finished": {
++      "version": "2.4.2",
++      "resolved": "https://registry.npmjs.org/on-finished/-/on-finished-2.4.2.tgz",
++      "integrity": "sha512-ATWUv387i+nLD49EiDoOft5scf32Vsdz3ktrQJG9bi7jRFmaXTssvyvj1EmeKVVgvesbqUtvQQvaS2TpTukAZQ==",
++      "license": "MIT",
++      "dependencies": {
++        "ee-first": "1.1.1"
++      },
++      "engines": {
++        "node": ">= 0.8"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/express"
++      }
++    },
++    "node_modules/parseurl": {
++      "version": "1.3.3",
++      "resolved": "https://registry.npmjs.org/parseurl/-/parseurl-1.3.3.tgz",
++      "integrity": "sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.8"
++      }
++    },
++    "node_modules/path-to-regexp": {
++      "version": "0.1.13",
++      "resolved": "https://registry.npmjs.org/path-to-regexp/-/path-to-regexp-0.1.13.tgz",
++      "integrity": "sha512-A/AGNMFN3c8bOlvV9RreMdrv7jsmF9XIfDeCd87+I8RNg6s78BhJxMu69NEMHBSJFxKidViTEdruRwEk/WIKqA==",
++      "license": "MIT"
++    },
++    "node_modules/pg": {
++      "version": "8.23.1",
++      "resolved": "https://registry.npmjs.org/pg/-/pg-8.23.1.tgz",
++      "integrity": "sha512-aL96AHANtWjPLDOLqnhx+ngp9+UK7ETEU8VJrDCGvsSSi/mGLcWYsS6Herg7lmaBJe4uwrfqsa7gTEFaSizDoQ==",
++      "license": "MIT",
++      "dependencies": {
++        "pg-connection-string": "^2.14.1",
++        "pg-pool": "^3.14.0",
++        "pg-protocol": "^1.16.1",
++        "pg-types": "2.2.0",
++        "pgpass": "1.0.5"
++      },
++      "engines": {
++        "node": ">= 16.0.0"
++      },
++      "optionalDependencies": {
++        "pg-cloudflare": "^1.4.1"
++      },
++      "peerDependencies": {
++        "pg-native": ">=3.0.1"
++      },
++      "peerDependenciesMeta": {
++        "pg-native": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/pg-cloudflare": {
++      "version": "1.4.1",
++      "resolved": "https://registry.npmjs.org/pg-cloudflare/-/pg-cloudflare-1.4.1.tgz",
++      "integrity": "sha512-6PQbsFWZcp9EmJEwy5cGQ2La+AMWpP46lgbb8X+U/XsHIUweYDNCpeuKck5RxL2MdVFi7krbbEi5nX4Zh7JhrQ==",
++      "license": "MIT",
++      "optional": true
++    },
++    "node_modules/pg-connection-string": {
++      "version": "2.14.1",
++      "resolved": "https://registry.npmjs.org/pg-connection-string/-/pg-connection-string-2.14.1.tgz",
++      "integrity": "sha512-qR3kGNPBLpCNtz0evbKA0Y/MRFXwSSdT+pTJvYp/bXTcReZbvX1kzF0IyTc1QnxqF7AZbOeBhNL8R5mYQZV/MA==",
++      "license": "MIT"
++    },
++    "node_modules/pg-int8": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/pg-int8/-/pg-int8-1.0.1.tgz",
++      "integrity": "sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw==",
++      "license": "ISC",
++      "engines": {
++        "node": ">=4.0.0"
++      }
++    },
++    "node_modules/pg-pool": {
++      "version": "3.14.0",
++      "resolved": "https://registry.npmjs.org/pg-pool/-/pg-pool-3.14.0.tgz",
++      "integrity": "sha512-gKtPkFdQPU3DksooVLi9LsjZxrsBUZIpa+7aVx+LV5pNh0KzP4Zleud2po+ConrxbuXGBJ6Hfer6hdgpIBpBaw==",
++      "license": "MIT",
++      "peerDependencies": {
++        "pg": ">=8.0"
++      }
++    },
++    "node_modules/pg-protocol": {
++      "version": "1.16.1",
++      "resolved": "https://registry.npmjs.org/pg-protocol/-/pg-protocol-1.16.1.tgz",
++      "integrity": "sha512-p9VOFMiHB/ZbJATetbg+99PxssTVSQRnyuPSQ67mN1+1KBOjZaZ83ZQzltnxPhJwSsC3nwVjJ10DVJlerbFzLg==",
++      "license": "MIT"
++    },
++    "node_modules/pg-types": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmjs.org/pg-types/-/pg-types-2.2.0.tgz",
++      "integrity": "sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==",
++      "license": "MIT",
++      "dependencies": {
++        "pg-int8": "1.0.1",
++        "postgres-array": "~2.0.0",
++        "postgres-bytea": "~1.0.0",
++        "postgres-date": "~1.0.4",
++        "postgres-interval": "^1.1.0"
++      },
++      "engines": {
++        "node": ">=4"
++      }
++    },
++    "node_modules/pgpass": {
++      "version": "1.0.5",
++      "resolved": "https://registry.npmjs.org/pgpass/-/pgpass-1.0.5.tgz",
++      "integrity": "sha512-FdW9r/jQZhSeohs1Z3sI1yxFQNFvMcnmfuj4WBMUTxOrAyLMaTcE1aAMBiTlbMNaXvBCQuVi0R7hd8udDSP7ug==",
++      "license": "MIT",
++      "dependencies": {
++        "split2": "^4.1.0"
++      }
++    },
++    "node_modules/postgres-array": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/postgres-array/-/postgres-array-2.0.0.tgz",
++      "integrity": "sha512-VpZrUqU5A69eQyW2c5CA1jtLecCsN2U/bD6VilrFDWq5+5UIEVO7nazS3TEcHf1zuPYO/sqGvUvW62g86RXZuA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=4"
++      }
++    },
++    "node_modules/postgres-bytea": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/postgres-bytea/-/postgres-bytea-1.0.1.tgz",
++      "integrity": "sha512-5+5HqXnsZPE65IJZSMkZtURARZelel2oXUEO8rH83VS/hxH5vv1uHquPg5wZs8yMAfdv971IU+kcPUczi7NVBQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/postgres-date": {
++      "version": "1.0.7",
++      "resolved": "https://registry.npmjs.org/postgres-date/-/postgres-date-1.0.7.tgz",
++      "integrity": "sha512-suDmjLVQg78nMK2UZ454hAG+OAW+HQPZ6n++TNDUX+L0+uUlLywnoxJKDou51Zm+zTCjrCl0Nq6J9C5hP9vK/Q==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/postgres-interval": {
++      "version": "1.2.0",
++      "resolved": "https://registry.npmjs.org/postgres-interval/-/postgres-interval-1.2.0.tgz",
++      "integrity": "sha512-9ZhXKM/rw350N1ovuWHbGxnGh/SNJ4cnxHiM0rxE4VN41wsg8P8zWn9hv/buK00RP4WvlOyr/RBDiptyxVbkZQ==",
++      "license": "MIT",
++      "dependencies": {
++        "xtend": "^4.0.0"
++      },
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/proxy-addr": {
++      "version": "2.0.8",
++      "resolved": "https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.8.tgz",
++      "integrity": "sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ==",
++      "license": "MIT",
++      "dependencies": {
++        "forwarded": "0.2.0",
++        "ipaddr.js": "1.9.1"
++      },
++      "engines": {
++        "node": ">= 0.10"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/express"
++      }
++    },
++    "node_modules/qs": {
++      "version": "6.16.2",
++      "resolved": "https://registry.npmjs.org/qs/-/qs-6.16.2.tgz",
++      "integrity": "sha512-VYdnB5S7/0IeXzBacUtwNAaM6d7Y/PgYnNC7bJCI6meqA/OgnsQbZMtVW8Dt2D1PHgbHGtYmhSoEIgvt7xZ2ZA==",
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "es-define-property": "^1.0.1",
++        "side-channel": "^1.1.1"
++      },
++      "engines": {
++        "node": ">=0.6"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/range-parser": {
++      "version": "1.2.1",
++      "resolved": "https://registry.npmjs.org/range-parser/-/range-parser-1.2.1.tgz",
++      "integrity": "sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/raw-body": {
++      "version": "2.5.3",
++      "resolved": "https://registry.npmjs.org/raw-body/-/raw-body-2.5.3.tgz",
++      "integrity": "sha512-s4VSOf6yN0rvbRZGxs8Om5CWj6seneMwK3oDb4lWDH0UPhWcxwOWw5+qk24bxq87szX1ydrwylIOp2uG1ojUpA==",
++      "license": "MIT",
++      "dependencies": {
++        "bytes": "~3.1.2",
++        "http-errors": "~2.0.1",
++        "iconv-lite": "~0.4.24",
++        "unpipe": "~1.0.0"
++      },
++      "engines": {
++        "node": ">= 0.8"
++      }
++    },
++    "node_modules/safe-buffer": {
++      "version": "5.2.1",
++      "resolved": "https://registry.npmjs.org/safe-buffer/-/safe-buffer-5.2.1.tgz",
++      "integrity": "sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/feross"
++        },
++        {
++          "type": "patreon",
++          "url": "https://www.patreon.com/feross"
++        },
++        {
++          "type": "consulting",
++          "url": "https://feross.org/support"
++        }
++      ],
++      "license": "MIT"
++    },
++    "node_modules/safer-buffer": {
++      "version": "2.1.2",
++      "resolved": "https://registry.npmjs.org/safer-buffer/-/safer-buffer-2.1.2.tgz",
++      "integrity": "sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==",
++      "license": "MIT"
++    },
++    "node_modules/send": {
++      "version": "0.19.2",
++      "resolved": "https://registry.npmjs.org/send/-/send-0.19.2.tgz",
++      "integrity": "sha512-VMbMxbDeehAxpOtWJXlcUS5E8iXh6QmN+BkRX1GARS3wRaXEEgzCcB10gTQazO42tpNIya8xIyNx8fll1OFPrg==",
++      "license": "MIT",
++      "dependencies": {
++        "debug": "2.6.9",
++        "depd": "2.0.0",
++        "destroy": "1.2.0",
++        "encodeurl": "~2.0.0",
++        "escape-html": "~1.0.3",
++        "etag": "~1.8.1",
++        "fresh": "~0.5.2",
++        "http-errors": "~2.0.1",
++        "mime": "1.6.0",
++        "ms": "2.1.3",
++        "on-finished": "~2.4.1",
++        "range-parser": "~1.2.1",
++        "statuses": "~2.0.2"
++      },
++      "engines": {
++        "node": ">= 0.8.0"
++      }
++    },
++    "node_modules/send/node_modules/ms": {
++      "version": "2.1.3",
++      "resolved": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
++      "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
++      "license": "MIT"
++    },
++    "node_modules/serve-static": {
++      "version": "1.16.3",
++      "resolved": "https://registry.npmjs.org/serve-static/-/serve-static-1.16.3.tgz",
++      "integrity": "sha512-x0RTqQel6g5SY7Lg6ZreMmsOzncHFU7nhnRWkKgWuMTu5NN0DR5oruckMqRvacAN9d5w6ARnRBXl9xhDCgfMeA==",
++      "license": "MIT",
++      "dependencies": {
++        "encodeurl": "~2.0.0",
++        "escape-html": "~1.0.3",
++        "parseurl": "~1.3.3",
++        "send": "~0.19.1"
++      },
++      "engines": {
++        "node": ">= 0.8.0"
++      }
++    },
++    "node_modules/setprototypeof": {
++      "version": "1.2.0",
++      "resolved": "https://registry.npmjs.org/setprototypeof/-/setprototypeof-1.2.0.tgz",
++      "integrity": "sha512-E5LDX7Wrp85Kil5bhZv46j8jOeboKq5JMmYM3gVGdGH8xFpPWXUMsNrlODCrkoxMEeNi/XZIwuRvY4XNwYMJpw==",
++      "license": "ISC"
++    },
++    "node_modules/side-channel": {
++      "version": "1.1.1",
++      "resolved": "https://registry.npmjs.org/side-channel/-/side-channel-1.1.1.tgz",
++      "integrity": "sha512-6x6dK6zJdpTzF4sQeNYxwtvBzf6Eg4GtlesS94HOvTudUeyK2WXAaIfmDgsyslYrRBeFIlsi54AYsFGUuhmvrQ==",
++      "license": "MIT",
++      "dependencies": {
++        "es-errors": "^1.3.0",
++        "object-inspect": "^1.13.4",
++        "side-channel-list": "^1.0.1",
++        "side-channel-map": "^1.0.1",
++        "side-channel-weakmap": "^1.0.2"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/side-channel-list": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/side-channel-list/-/side-channel-list-1.0.1.tgz",
++      "integrity": "sha512-mjn/0bi/oUURjc5Xl7IaWi/OJJJumuoJFQJfDDyO46+hBWsfaVM65TBHq2eoZBhzl9EchxOijpkbRC8SVBQU0w==",
++      "license": "MIT",
++      "dependencies": {
++        "es-errors": "^1.3.0",
++        "object-inspect": "^1.13.4"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/side-channel-map": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/side-channel-map/-/side-channel-map-1.0.1.tgz",
++      "integrity": "sha512-VCjCNfgMsby3tTdo02nbjtM/ewra6jPHmpThenkTYh8pG9ucZ/1P8So4u4FGBek/BjpOVsDCMoLA/iuBKIFXRA==",
++      "license": "MIT",
++      "dependencies": {
++        "call-bound": "^1.0.2",
++        "es-errors": "^1.3.0",
++        "get-intrinsic": "^1.2.5",
++        "object-inspect": "^1.13.3"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/side-channel-weakmap": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/side-channel-weakmap/-/side-channel-weakmap-1.0.2.tgz",
++      "integrity": "sha512-WPS/HvHQTYnHisLo9McqBHOJk2FkHO/tlpvldyrnem4aeQp4hai3gythswg6p01oSoTl58rcpiFAjF2br2Ak2A==",
++      "license": "MIT",
++      "dependencies": {
++        "call-bound": "^1.0.2",
++        "es-errors": "^1.3.0",
++        "get-intrinsic": "^1.2.5",
++        "object-inspect": "^1.13.3",
++        "side-channel-map": "^1.0.1"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/split2": {
++      "version": "4.2.0",
++      "resolved": "https://registry.npmjs.org/split2/-/split2-4.2.0.tgz",
++      "integrity": "sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==",
++      "license": "ISC",
++      "engines": {
++        "node": ">= 10.x"
++      }
++    },
++    "node_modules/statuses": {
++      "version": "2.0.2",
++      "resolved": "https://registry.npmjs.org/statuses/-/statuses-2.0.2.tgz",
++      "integrity": "sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.8"
++      }
++    },
++    "node_modules/toidentifier": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/toidentifier/-/toidentifier-1.0.1.tgz",
++      "integrity": "sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.6"
++      }
++    },
++    "node_modules/type-is": {
++      "version": "1.6.18",
++      "resolved": "https://registry.npmjs.org/type-is/-/type-is-1.6.18.tgz",
++      "integrity": "sha512-TkRKr9sUTxEH8MdfuCSP7VizJyzRNMjj2J2do2Jr3Kym598JVdEksuzPQCnlFPW4ky9Q+iA+ma9BGm06XQBy8g==",
++      "license": "MIT",
++      "dependencies": {
++        "media-typer": "0.3.0",
++        "mime-types": "~2.1.24"
++      },
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/unpipe": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/unpipe/-/unpipe-1.0.0.tgz",
++      "integrity": "sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.8"
++      }
++    },
++    "node_modules/utils-merge": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/utils-merge/-/utils-merge-1.0.1.tgz",
++      "integrity": "sha512-pMZTvIkT1d+TFGvDOqodOclx0QWkkgi6Tdoa8gC8ffGAAqz9pzPTZWAybbsHHoED/ztMtkv/VoYTYyShUn81hA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4.0"
++      }
++    },
++    "node_modules/vary": {
++      "version": "1.1.2",
++      "resolved": "https://registry.npmjs.org/vary/-/vary-1.1.2.tgz",
++      "integrity": "sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.8"
++      }
++    },
++    "node_modules/xtend": {
++      "version": "4.0.2",
++      "resolved": "https://registry.npmjs.org/xtend/-/xtend-4.0.2.tgz",
++      "integrity": "sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.4"
++      }
++    }
++  }
++}
+diff --git a/package.json b/package.json
+index e334ae7..18b5a92 100644
+--- a/package.json
++++ b/package.json
+@@ -5,7 +5,8 @@
+   "description": "A personal CS2 FACEIT comeback tracker",
+   "main": "server.js",
+   "scripts": {
+-    "start": "node server.js"
++    "start": "node server.js",
++    "test": "node test/retry.test.js"
+   },
+   "engines": {
+     "node": ">=20"
+@@ -14,4 +15,4 @@
+     "express": "^4.21.2",
+     "pg": "^8.16.3"
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/scripts/validate-faceit.js b/scripts/validate-faceit.js
+new file mode 100644
+index 0000000..b79ca52
+--- /dev/null
++++ b/scripts/validate-faceit.js
+@@ -0,0 +1,189 @@
++#!/usr/bin/env node
++/*
++ * READ-ONLY validation of the FACEIT Data API for the career importer.
++ * - Sends GET requests only. No database access. Writes only ./validation-report.json.
++ * - Never prints or stores the API key.
++ *
++ * Usage (from the repo root):
++ *   FACEIT_API_KEY=your_key node scripts/validate-faceit.js
++ * Optional: FACEIT_NICKNAME=kiyosei  MAX_PAGES=100  DELAY_MS=300
++ */
++const fs = require("fs");
++const { faceitGet } = require("../src/faceit");
++
++const NICK = process.env.FACEIT_NICKNAME || "kiyosei";
++const GAME = "cs2";
++const LIMIT = 100;
++const MAX_PAGES = Number(process.env.MAX_PAGES) || 100;
++const DELAY = Number(process.env.DELAY_MS) || 300;
++const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
++const report = { generatedAt: new Date().toISOString(), nickname: NICK, game: GAME, requests: 0, checks: {} };
++
++async function get(path) {
++  report.requests++;
++  await sleep(DELAY);
++  return faceitGet(path);
++}
++async function attempt(name, fn) {
++  try { report.checks[name] = { ok: true, ...(await fn()) }; }
++  catch (e) { report.checks[name] = { ok: false, status: e.status || null, error: e.message }; }
++  console.log(`${report.checks[name].ok ? "OK  " : "FAIL"} ${name}`);
++}
++function scanKeys(obj, re, path = "", out = []) {
++  if (obj && typeof obj === "object") {
++    for (const [k, v] of Object.entries(obj)) {
++      const p = path ? `${path}.${k}` : k;
++      if (re.test(k)) out.push({ path: p, value: v && typeof v === "object" ? "[object]" : v });
++      scanKeys(v, re, p, out);
++    }
++  }
++  return out;
++}
++const PEAK_RE = /peak|season|highest|best.?elo|max.?elo|all.?time/i;
++const ts = (m) => Number(m.started_at ?? m.finished_at);
++const ids = (items) => items.map((m) => m.match_id);
++
++(async () => {
++  let player, playerId, region;
++  await attempt("player_lookup", async () => {
++    player = await get(`/players?nickname=${encodeURIComponent(NICK)}&game=${GAME}`);
++    playerId = player.player_id; const g = player.games?.[GAME] || {}; region = g.region;
++    return { playerFound: Boolean(playerId), elo: g.faceit_elo ?? null, skillLevel: g.skill_level ?? null, region: region ?? null,
++      topLevelKeys: Object.keys(player), gameKeys: Object.keys(g),
++      peakOrSeasonFields: scanKeys(player, PEAK_RE) };
++  });
++  if (!playerId) return finish();
++
++  await attempt("lifetime_stats", async () => {
++    const s = await get(`/players/${playerId}/stats/${GAME}`);
++    const lifetime = s.lifetime || {};
++    return { lifetimeKeys: Object.keys(lifetime), lifetimeMatches: lifetime.Matches ?? null,
++      peakOrSeasonFields: scanKeys(s, PEAK_RE), segmentCount: (s.segments || []).length };
++  });
++
++  await attempt("game_skill_levels", async () => {
++    const g = await get(`/games/${GAME}`);
++    return { regions: g.regions ? Object.keys(g.regions) : null, skillLevels: g.skill_levels || null,
++      peakOrSeasonFields: scanKeys(g, PEAK_RE) };
++  });
++
++  await attempt("ranking_endpoint", async () => {
++    if (!region) throw new Error("no region on player profile");
++    const r = await get(`/rankings/games/${GAME}/regions/${encodeURIComponent(region)}/players/${playerId}?limit=1`);
++    return { keys: Object.keys(r), peakOrSeasonFields: scanKeys(r, PEAK_RE), position: r.position ?? null };
++  });
++
++  await attempt("games_stats_endpoint", async () => {
++    const r = await get(`/players/${playerId}/games/${GAME}/stats?limit=${LIMIT}&offset=0`);
++    const first = r.items?.[0]?.stats || {};
++    return { itemCount: (r.items || []).length, statKeys: Object.keys(first), peakOrSeasonFields: scanKeys(first, /elo|season|peak/i) };
++  });
++
++  // ---- Pagination: offset walk (first 1000), then probe beyond ----
++  const offsetItems = []; let offsetFailedAt = null;
++  await attempt("offset_pagination", async () => {
++    for (let off = 0; off < 1000; off += LIMIT) {
++      const r = await get(`/players/${playerId}/history?game=${GAME}&offset=${off}&limit=${LIMIT}`);
++      if (!(r.items || []).length) break;
++      offsetItems.push(...r.items);
++      if (r.items.length < LIMIT) break;
++    }
++    const probes = {};
++    for (const off of [1000, 1100, 2000]) {
++      try { const r = await get(`/players/${playerId}/history?game=${GAME}&offset=${off}&limit=${LIMIT}`); probes[off] = { status: 200, items: (r.items || []).length }; }
++      catch (e) { probes[off] = { status: e.status || null, error: e.message }; offsetFailedAt = offsetFailedAt ?? off; }
++    }
++    return { itemsWalked: offsetItems.length, beyond1000: probes };
++  });
++
++  // ---- Pagination: timestamp cursor walk ----
++  const walk = []; const pageLog = [];
++  await attempt("timestamp_pagination", async () => {
++    let cursor = null, prevIds = new Set(), stalled = false, hitMax = true;
++    for (let page = 0; page < MAX_PAGES; page++) {
++      const q = `/players/${playerId}/history?game=${GAME}&limit=${LIMIT}` + (cursor ? `&to=${cursor}` : "&offset=0");
++      const r = await get(q); const items = r.items || [];
++      if (!items.length) { hitMax = false; break; }
++      const t = items.map(ts).filter(Number.isFinite);
++      const overlap = items.filter((m) => prevIds.has(m.match_id)).length;
++      const boundaryRepeated = cursor ? items.some((m) => ts(m) === Number(cursor)) : false;
++      pageLog.push({ page, cursorIn: cursor, count: items.length, newest: Math.max(...t), oldest: Math.min(...t),
++        overlapWithPreviousPage: overlap, boundaryMatchRepeated: boundaryRepeated,
++        sortedNewestFirst: t.every((v, i) => i === 0 || t[i - 1] >= v) });
++      walk.push(...items);
++      prevIds = new Set(ids(items));
++      const next = Math.min(...t);
++      if (cursor && next >= Number(cursor)) { stalled = true; hitMax = false; break; }
++      cursor = next;
++      if (items.length < LIMIT) { hitMax = false; break; }
++    }
++    const uniq = new Set(ids(walk));
++    const oldest = [...walk].sort((a, b) => ts(a) - ts(b))[0];
++    return { pages: pageLog.length, totalItems: walk.length, uniqueMatches: uniq.size, duplicatesAcrossPages: walk.length - uniq.size,
++      cursorStalled: stalled, stoppedBecauseMaxPages: hitMax,
++      oldestAccessibleMatch: oldest ? { match_id: oldest.match_id, started_at: oldest.started_at ?? null,
++        finished_at: oldest.finished_at ?? null, iso: new Date(ts(oldest) * 1000).toISOString() } : null,
++      pageLog };
++  });
++
++  // ---- Cross-checks ----
++  await attempt("cross_checks", async () => {
++    const walkIds = new Set(ids(walk));
++    const firstK = offsetItems.map((m) => m.match_id);
++    const missingFromTimestampWalk = firstK.filter((id) => !walkIds.has(id)).length;
++    const raw = report.checks.lifetime_stats?.lifetimeMatches;
++    const lt = raw === null || raw === undefined || raw === "" ? NaN : Number(raw);
++    return { offsetMatchesMissingFromTimestampWalk: missingFromTimestampWalk,
++      lifetimeMatchesStat: Number.isFinite(lt) ? lt : null, uniqueMatchesImportable: walkIds.size,
++      historyCoversLifetime: Number.isFinite(lt) ? walkIds.size >= lt : null,
++      note: "If importable < lifetime, FACEIT history does not expose every match (older matches may be unavailable)." };
++  });
++
++  // ---- Interruption recovery: resume from a saved cursor mid-walk ----
++  await attempt("interruption_recovery", async () => {
++    if (pageLog.length < 3) return { skipped: true, reason: "fewer than 3 pages available" };
++    const savedCursor = pageLog[2].cursorIn; // what the importer would have persisted after page 2
++    const expected = []; for (const [i, p] of pageLog.entries()) if (i >= 2) expected.push(p.count);
++    const r = await get(`/players/${playerId}/history?game=${GAME}&limit=${LIMIT}&to=${savedCursor}`);
++    const resumedIds = ids(r.items || []);
++    const original = walk.slice(200, 200 + resumedIds.length).map((m) => m.match_id);
++    return { resumedFromCursor: savedCursor, resumedPageSize: resumedIds.length, identicalToUninterruptedWalk: JSON.stringify(resumedIds) === JSON.stringify(original) };
++  });
++
++  // ---- Per-match stats availability: newest, evenly spaced, oldest ----
++  await attempt("match_stats_availability", async () => {
++    if (!walk.length) throw new Error("no matches walked");
++    const sorted = [...walk].sort((a, b) => ts(b) - ts(a));
++    const picks = [0, 0.25, 0.5, 0.75, 0.95, 1].map((f) => sorted[Math.min(sorted.length - 1, Math.floor(f * (sorted.length - 1)))]);
++    const samples = [];
++    for (const m of picks) {
++      try {
++        const s = await get(`/matches/${encodeURIComponent(m.match_id)}/stats`);
++        const players = (s.rounds?.[0]?.teams || []).flatMap((t) => t.players || []);
++        const me = players.find((p) => p.player_id === playerId);
++        samples.push({ match_id: m.match_id, iso: new Date(ts(m) * 1000).toISOString(), status: 200, playerFound: Boolean(me),
++          statKeys: me ? Object.keys(me.player_stats || {}) : null, eloFields: scanKeys(s, /elo/i).map((x) => x.path) });
++      } catch (e) { samples.push({ match_id: m.match_id, iso: new Date(ts(m) * 1000).toISOString(), status: e.status || null, error: e.message }); }
++    }
++    return { samples };
++  });
++
++  finish();
++})().catch((e) => { report.fatal = e.message; finish(); });
++
++function finish() {
++  const c = report.checks;
++  const peakFields = [c.player_lookup, c.lifetime_stats, c.game_skill_levels, c.ranking_endpoint, c.games_stats_endpoint]
++    .flatMap((x) => (x?.ok ? x.peakOrSeasonFields || [] : []));
++  report.summary = {
++    peakOrSeasonDataFoundInOfficialAPI: peakFields.length > 0,
++    peakOrSeasonFieldsFound: peakFields,
++    interpretation: peakFields.length
++      ? "Fields matching peak/season were found. Inspect the values before treating them as peak ELO; a key name alone does not prove it."
++      : "No peak ELO or season field appeared in any documented endpoint checked. Treat all-time and season peaks as UNAVAILABLE (not estimated)."
++  };
++  fs.writeFileSync("validation-report.json", JSON.stringify(report, null, 2));
++  console.log(`\nRequests made: ${report.requests} (all GET, read-only)`);
++  console.log(`Peak/season fields found: ${peakFields.length}`);
++  console.log("Full results written to validation-report.json");
++}
+diff --git a/server.js b/server.js
+index 69ad270..ca63fbe 100644
+--- a/server.js
++++ b/server.js
+@@ -1,187 +1,18 @@
+ const express = require("express");
+ const path = require("path");
+-const { Pool } = require("pg");
++const { pool, ensureSchema } = require("./src/db");
++const { faceitGet, getPlayerOutcome } = require("./src/faceit");
++const { persistMatches, readTrackingData } = require("./src/tracker");
++const { syncRecent, importCareer, syncStatus } = require("./src/sync");
++const crypto = require("crypto");
+ 
+ const app = express();
+ const PORT = process.env.PORT || 3000;
+-const API_BASE = "https://open.faceit.com/data/v4";
+ const PLAYER_NICKNAME = process.env.FACEIT_NICKNAME || "kiyosei";
+ const GAME_ID = "cs2";
+-const BASELINE_ELO = 1680;
+-const BASELINE_AT = "2026-11-11T00:00:00+08:00";
+ 
+ app.use(express.static(path.join(__dirname, "public")));
+ 
+-const pool = process.env.DATABASE_URL
+-  ? new Pool({
+-      connectionString: process.env.DATABASE_URL,
+-      ssl: { rejectUnauthorized: false },
+-      max: 5,
+-      idleTimeoutMillis: 30000,
+-      connectionTimeoutMillis: 10000
+-    })
+-  : null;
+-
+-if (pool) {
+-  pool.on("error", (error) => console.error("Unexpected database pool error:", error.message));
+-}
+-
+-let schemaReady = false;
+-
+-async function ensureSchema() {
+-  if (!pool) return false;
+-  if (schemaReady) return true;
+-  await pool.query(`
+-    CREATE TABLE IF NOT EXISTS elo_snapshots (
+-      id BIGSERIAL PRIMARY KEY,
+-      elo INTEGER NOT NULL,
+-      captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-    );
+-    CREATE TABLE IF NOT EXISTS faceit_matches (
+-      match_id TEXT PRIMARY KEY,
+-      finished_at BIGINT,
+-      map TEXT,
+-      outcome TEXT,
+-      score TEXT,
+-      stats JSONB,
+-      elo_before INTEGER,
+-      elo_after INTEGER,
+-      elo_change INTEGER,
+-      saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-    );
+-  `);
+-  schemaReady = true;
+-  return true;
+-}
+-
+-async function faceitGet(endpoint) {
+-  if (!process.env.FACEIT_API_KEY) {
+-    const error = new Error("FACEIT_API_KEY is not configured on the server.");
+-    error.status = 503;
+-    throw error;
+-  }
+-  const response = await fetch(`${API_BASE}${endpoint}`, {
+-    headers: { Authorization: `Bearer ${process.env.FACEIT_API_KEY}`, Accept: "application/json" }
+-  });
+-  if (!response.ok) {
+-    const message = response.status === 401 ? "FACEIT rejected the API key."
+-      : response.status === 403 ? "FACEIT denied access to this API resource."
+-      : response.status === 429 ? "FACEIT rate limit reached. Try again shortly."
+-      : `FACEIT API returned HTTP ${response.status}.`;
+-    const error = new Error(message);
+-    error.status = response.status;
+-    throw error;
+-  }
+-  return response.json();
+-}
+-
+-function getPlayerOutcome(match, playerId) {
+-  const winner = match.results?.winner;
+-  for (const [teamName, team] of Object.entries(match.teams || {})) {
+-    if ((team.roster || []).some((member) => member.player_id === playerId)) {
+-      return winner ? (winner === teamName ? "Win" : "Loss") : "Unknown";
+-    }
+-  }
+-  return "Unknown";
+-}
+-
+-function getPlayerMatchStats(data, playerId, nickname) {
+-  const round = data?.rounds?.[0];
+-  if (!round) return { stats: null, map: null, score: null };
+-  let found = null;
+-  for (const team of round.teams || []) {
+-    found = (team.players || []).find((player) =>
+-      player.player_id === playerId || player.nickname?.toLowerCase() === nickname.toLowerCase()
+-    );
+-    if (found) break;
+-  }
+-  const score = (round.teams || []).map((team) => team.team_stats?.["Final Score"]).filter(Boolean).join("-");
+-  return {
+-    stats: found?.player_stats || null,
+-    map: round.round_stats?.Map || null,
+-    score: score || null
+-  };
+-}
+-
+-async function persistMatches(historyItems, playerId, nickname, currentElo) {
+-  if (!(await ensureSchema())) return { configured: false, saved: 0 };
+-  const latestSnapshot = await pool.query(
+-    "SELECT elo FROM elo_snapshots ORDER BY captured_at DESC, id DESC LIMIT 1"
+-  );
+-  let previousElo = latestSnapshot.rows[0]?.elo ?? null;
+-  const isFirstSync = previousElo === null;
+-
+-  if (isFirstSync) {
+-    await pool.query(
+-      "INSERT INTO elo_snapshots (elo, captured_at) VALUES ($1, $2)",
+-      [BASELINE_ELO, BASELINE_AT]
+-    );
+-    previousElo = BASELINE_ELO;
+-  }
+-
+-  const known = await pool.query("SELECT match_id FROM faceit_matches");
+-  const knownIds = new Set(known.rows.map((row) => row.match_id));
+-  const newItems = (historyItems || []).filter((item) => item.match_id && !knownIds.has(item.match_id));
+-  const chronological = [...newItems].reverse();
+-  let saved = 0;
+-
+-  for (let index = 0; index < chronological.length; index++) {
+-    const match = chronological[index];
+-    let matchStats = null;
+-    let matchMap = match.map || match.competition_name || "FACEIT match";
+-    let score = null;
+-
+-    try {
+-      const statsData = await faceitGet(`/matches/${encodeURIComponent(match.match_id)}/stats`);
+-      const parsed = getPlayerMatchStats(statsData, playerId, nickname);
+-      matchStats = parsed.stats;
+-      matchMap = parsed.map || matchMap;
+-      score = parsed.score;
+-    } catch (error) {
+-      console.warn(`Could not fetch stats for match ${match.match_id}: ${error.message}`);
+-    }
+-
+-    // FACEIT's public player-history response does not expose a dependable
+-    // per-match ELO delta. Attribute a delta only when exactly one new match
+-    // appeared between two known ELO snapshots.
+-    const canAttributeElo = !isFirstSync && chronological.length === 1 && Number.isFinite(Number(currentElo));
+-    const eloBefore = canAttributeElo ? previousElo : null;
+-    const eloAfter = canAttributeElo ? Number(currentElo) : null;
+-    const eloChange = canAttributeElo ? Number(currentElo) - previousElo : null;
+-
+-    await pool.query(
+-      `INSERT INTO faceit_matches
+-        (match_id, finished_at, map, outcome, score, stats, elo_before, elo_after, elo_change)
+-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+-       ON CONFLICT (match_id) DO NOTHING`,
+-      [match.match_id, match.finished_at || match.started_at || null, matchMap,
+-       getPlayerOutcome(match, playerId), score, matchStats ? JSON.stringify(matchStats) : null,
+-       eloBefore, eloAfter, eloChange]
+-    );
+-    saved++;
+-  }
+-
+-  const current = Number(currentElo);
+-  if (Number.isFinite(current)) {
+-    const last = await pool.query(
+-      "SELECT elo FROM elo_snapshots ORDER BY captured_at DESC, id DESC LIMIT 1"
+-    );
+-    if (!last.rows.length || last.rows[0].elo !== current) {
+-      await pool.query("INSERT INTO elo_snapshots (elo) VALUES ($1)", [current]);
+-    }
+-  }
+-  return { configured: true, saved, firstSync: isFirstSync };
+-}
+-
+-async function readTrackingData() {
+-  if (!(await ensureSchema())) return { configured: false, snapshots: [], matches: [] };
+-  const [snapshots, matches] = await Promise.all([
+-    pool.query("SELECT elo, captured_at FROM elo_snapshots ORDER BY captured_at ASC"),
+-    pool.query("SELECT match_id, finished_at, map, outcome, score, stats, elo_before, elo_after, elo_change FROM faceit_matches ORDER BY finished_at DESC NULLS LAST LIMIT 50")
+-  ]);
+-  return { configured: true, snapshots: snapshots.rows, matches: matches.rows };
+-}
+-
+ app.get("/api/health", async (_req, res) => {
+   let database = false;
+   let databaseError = null;
+@@ -243,5 +74,28 @@ app.get("/api/history", async (_req, res) => {
+   }
+ });
+ 
++
++// Protects write/trigger endpoints. The scheduler sends the shared secret.
++function requireSecret(req, res, next) {
++  const expected = process.env.SYNC_SECRET;
++  if (!expected) return res.status(503).json({ error: "SYNC_SECRET is not configured on the server." });
++  const given = String(req.get("x-sync-secret") || "");
++  const a = crypto.createHash("sha256").update(given).digest();
++  const b = crypto.createHash("sha256").update(expected).digest();
++  if (!crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: "Unauthorized." });
++  next();
++}
++const fail = (res, error) => res.status(error.status || 500).json({ error: error.message || "Request failed." });
++
++app.get("/api/sync/status", async (_req, res) => {
++  try { res.json(await syncStatus()); } catch (e) { fail(res, e); }
++});
++app.post("/api/sync", requireSecret, async (_req, res) => {
++  try { res.json(await syncRecent()); } catch (e) { fail(res, e); }
++});
++app.post("/api/career/import", requireSecret, async (req, res) => {
++  try { res.json(await importCareer({ maxPages: Math.min(Number(req.query.pages) || 5, 20) })); } catch (e) { fail(res, e); }
++});
++
+ app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
+ app.listen(PORT, () => console.log(`Kiyosei FACEIT Tracker listening on port ${PORT}`));
+diff --git a/src/db.js b/src/db.js
+new file mode 100644
+index 0000000..9cbbb39
+--- /dev/null
++++ b/src/db.js
+@@ -0,0 +1,70 @@
++const fs = require("fs");
++const path = require("path");
++const { Pool } = require("pg");
++
++// SSL stays on by default (matches the previous behaviour for Supabase).
++// Set DATABASE_SSL=disable only for a local test database.
++const pool = process.env.DATABASE_URL
++  ? new Pool({
++      connectionString: process.env.DATABASE_URL,
++      ssl: process.env.DATABASE_SSL === "disable" ? false : { rejectUnauthorized: false },
++      max: 5,
++      idleTimeoutMillis: 30000,
++      connectionTimeoutMillis: 10000
++    })
++  : null;
++
++if (pool) {
++  pool.on("error", (error) => console.error("Unexpected database pool error:", error.message));
++}
++
++const MIGRATIONS_DIR = path.join(__dirname, "..", "migrations");
++let migrationPromise = null;
++
++// Applies numbered .sql files once each, in order. Additive only: files are
++// never edited after release, and nothing here drops or rewrites data.
++async function runMigrations() {
++  if (!pool) return false;
++  const client = await pool.connect();
++  try {
++    await client.query("SELECT pg_advisory_lock(727001)");
++    await client.query(
++      "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"
++    );
++    const done = new Set((await client.query("SELECT name FROM schema_migrations")).rows.map((r) => r.name));
++    const files = fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
++    for (const file of files) {
++      if (done.has(file)) continue;
++      const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf8");
++      try {
++        await client.query("BEGIN");
++        await client.query(sql);
++        await client.query("INSERT INTO schema_migrations (name) VALUES ($1)", [file]);
++        await client.query("COMMIT");
++        console.log(`Applied migration ${file}`);
++      } catch (error) {
++        await client.query("ROLLBACK");
++        throw new Error(`Migration ${file} failed: ${error.message}`);
++      }
++    }
++    return true;
++  } finally {
++    await client.query("SELECT pg_advisory_unlock(727001)").catch(() => {});
++    client.release();
++  }
++}
++
++// Same contract as the old ensureSchema(): false when no database is
++// configured, true once the schema is ready. Retries after a failure.
++function ensureSchema() {
++  if (!pool) return Promise.resolve(false);
++  if (!migrationPromise) {
++    migrationPromise = runMigrations().catch((error) => {
++      migrationPromise = null;
++      throw error;
++    });
++  }
++  return migrationPromise;
++}
++
++module.exports = { pool, ensureSchema, runMigrations };
+diff --git a/src/faceit.js b/src/faceit.js
+new file mode 100644
+index 0000000..4b36a24
+--- /dev/null
++++ b/src/faceit.js
+@@ -0,0 +1,71 @@
++const API_BASE = process.env.FACEIT_API_BASE || "https://open.faceit.com/data/v4";
++const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
++
++function friendlyMessage(status) {
++  return status === 401 ? "FACEIT rejected the API key."
++    : status === 403 ? "FACEIT denied access to this API resource."
++    : status === 429 ? "FACEIT rate limit reached. Try again shortly."
++    : `FACEIT API returned HTTP ${status}.`;
++}
++
++// Retries only transient failures (429, 5xx, network errors) with
++// exponential backoff. 4xx errors such as 401/403/404 fail immediately.
++async function faceitGet(endpoint, { retries = 3, baseDelayMs = 800 } = {}) {
++  if (!process.env.FACEIT_API_KEY) {
++    const error = new Error("FACEIT_API_KEY is not configured on the server.");
++    error.status = 503;
++    throw error;
++  }
++  let lastError;
++  for (let attempt = 0; attempt <= retries; attempt++) {
++    try {
++      const response = await fetch(`${API_BASE}${endpoint}`, {
++        headers: { Authorization: `Bearer ${process.env.FACEIT_API_KEY}`, Accept: "application/json" }
++      });
++      if (response.ok) return await response.json();
++      const error = new Error(friendlyMessage(response.status));
++      error.status = response.status;
++      if (response.status !== 429 && response.status < 500) throw error;
++      const retryAfter = Number(response.headers.get("retry-after"));
++      error.retryAfterMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : null;
++      lastError = error;
++    } catch (error) {
++      if (error.status && error.status < 500 && error.status !== 429) throw error;
++      lastError = error;
++    }
++    if (attempt < retries) {
++      await sleep(lastError.retryAfterMs ?? baseDelayMs * 2 ** attempt);
++    }
++  }
++  throw lastError;
++}
++
++function getPlayerOutcome(match, playerId) {
++  const winner = match.results?.winner;
++  for (const [teamName, team] of Object.entries(match.teams || {})) {
++    if ((team.roster || []).some((member) => member.player_id === playerId)) {
++      return winner ? (winner === teamName ? "Win" : "Loss") : "Unknown";
++    }
++  }
++  return "Unknown";
++}
++
++function getPlayerMatchStats(data, playerId, nickname) {
++  const round = data?.rounds?.[0];
++  if (!round) return { stats: null, map: null, score: null };
++  let found = null;
++  for (const team of round.teams || []) {
++    found = (team.players || []).find((player) =>
++      player.player_id === playerId || player.nickname?.toLowerCase() === nickname.toLowerCase()
++    );
++    if (found) break;
++  }
++  const score = (round.teams || []).map((team) => team.team_stats?.["Final Score"]).filter(Boolean).join("-");
++  return {
++    stats: found?.player_stats || null,
++    map: round.round_stats?.Map || null,
++    score: score || null
++  };
++}
++
++module.exports = { faceitGet, getPlayerOutcome, getPlayerMatchStats };
+diff --git a/src/sync.js b/src/sync.js
+new file mode 100644
+index 0000000..3b31e73
+--- /dev/null
++++ b/src/sync.js
+@@ -0,0 +1,149 @@
++const { pool, ensureSchema } = require("./db");
++const { faceitGet, getPlayerOutcome, getPlayerMatchStats } = require("./faceit");
++const { persistMatches } = require("./tracker");
++
++const NICKNAME = () => process.env.FACEIT_NICKNAME || "kiyosei";
++const GAME = "cs2";
++const PAGE_SIZE = 100; // documented FACEIT maximum per history request
++const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
++const LOCK_KEY = 727002;
++
++async function getState(key) {
++  const r = await pool.query("SELECT value FROM sync_state WHERE key = $1", [key]);
++  return r.rows[0]?.value || null;
++}
++async function setState(key, value) {
++  await pool.query(
++    `INSERT INTO sync_state (key, value, updated_at) VALUES ($1, $2, NOW())
++     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
++    [key, JSON.stringify(value)]
++  );
++}
++
++// Only one sync/import runs at a time (cron overlap, double clicks, etc.).
++async function withLock(fn) {
++  const client = await pool.connect();
++  try {
++    const got = (await client.query("SELECT pg_try_advisory_lock($1) AS ok", [LOCK_KEY])).rows[0].ok;
++    if (!got) { const e = new Error("Another sync is already running."); e.status = 409; throw e; }
++    try { return await fn(); }
++    finally { await client.query("SELECT pg_advisory_unlock($1)", [LOCK_KEY]).catch(() => {}); }
++  } finally { client.release(); }
++}
++
++async function startRun(kind) {
++  const r = await pool.query("INSERT INTO sync_runs (kind) VALUES ($1) RETURNING id", [kind]);
++  return r.rows[0].id;
++}
++async function finishRun(id, status, seen, saved, error) {
++  await pool.query(
++    "UPDATE sync_runs SET status=$2, finished_at=NOW(), matches_seen=$3, matches_saved=$4, error=$5 WHERE id=$1",
++    [id, status, seen, saved, error ? String(error).slice(0, 500) : null]
++  );
++}
++
++async function loadPlayer() {
++  const player = await faceitGet(`/players?nickname=${encodeURIComponent(NICKNAME())}&game=${GAME}`);
++  if (!player.player_id) throw new Error("FACEIT did not return a player ID for this nickname.");
++  return player;
++}
++
++// Incremental sync: newest 100 matches (was 20), deduplicated by match_id.
++async function syncRecent() {
++  if (!(await ensureSchema())) { const e = new Error("Database is not configured."); e.status = 503; throw e; }
++  return withLock(async () => {
++    const runId = await startRun("recent");
++    let seen = 0, saved = 0;
++    try {
++      const player = await loadPlayer();
++      const history = await faceitGet(`/players/${player.player_id}/history?game=${GAME}&offset=0&limit=${PAGE_SIZE}`);
++      const game = player.games?.[GAME] || {};
++      seen = (history.items || []).length;
++      const result = await persistMatches(history.items || [], player.player_id, player.nickname || NICKNAME(), game.faceit_elo);
++      saved = result.saved;
++      await finishRun(runId, "ok", seen, saved, null);
++      await setState("last_success", { at: new Date().toISOString(), kind: "recent", seen, saved });
++      return { ok: true, seen, saved };
++    } catch (error) {
++      await finishRun(runId, "error", seen, saved, error.message);
++      throw error;
++    }
++  });
++}
++
++// Resumable career import. Walks backwards in time using the `to` timestamp
++// cursor (count offsets are unreliable beyond ~1000). The cursor is saved
++// after every page, so an interrupted run continues where it stopped.
++// Imported rows have NULL ELO fields: FACEIT's official API gives no per-match ELO.
++async function importCareer({ maxPages = 5, delayMs = 250 } = {}) {
++  if (!(await ensureSchema())) { const e = new Error("Database is not configured."); e.status = 503; throw e; }
++  return withLock(async () => {
++    const runId = await startRun("career_import");
++    let seen = 0, saved = 0;
++    try {
++      const player = await loadPlayer();
++      const nickname = player.nickname || NICKNAME();
++      const state = (await getState("career_import")) || { done: false, cursor: null, pages: 0, imported: 0 };
++      if (state.done) { await finishRun(runId, "ok", 0, 0, null); return { ok: true, done: true, seen: 0, saved: 0, state }; }
++
++      for (let page = 0; page < maxPages; page++) {
++        const q = `/players/${player.player_id}/history?game=${GAME}&limit=${PAGE_SIZE}` +
++          (state.cursor ? `&to=${state.cursor}` : "&offset=0");
++        const history = await faceitGet(q);
++        const items = history.items || [];
++        if (!items.length) { state.done = true; await setState("career_import", state); break; }
++        seen += items.length;
++        const savedBefore = saved;
++
++        const known = new Set((await pool.query(
++          "SELECT match_id FROM faceit_matches WHERE match_id = ANY($1)", [items.map((i) => i.match_id)]
++        )).rows.map((r) => r.match_id));
++
++        for (const item of items) {
++          if (!item.match_id || known.has(item.match_id)) continue;
++          let stats = null, map = item.map || item.competition_name || "FACEIT match", score = null;
++          try {
++            const parsed = getPlayerMatchStats(await faceitGet(`/matches/${encodeURIComponent(item.match_id)}/stats`), player.player_id, nickname);
++            stats = parsed.stats; map = parsed.map || map; score = parsed.score;
++          } catch (error) {
++            console.warn(`Import: no stats for ${item.match_id}: ${error.message}`);
++          }
++          const r = await pool.query(
++            `INSERT INTO faceit_matches (match_id, finished_at, started_at, map, outcome, score, stats, source)
++             VALUES ($1,$2,$3,$4,$5,$6,$7,'career_import') ON CONFLICT (match_id) DO NOTHING`,
++            [item.match_id, item.finished_at || null, item.started_at || null, map,
++             getPlayerOutcome(item, player.player_id), score, stats ? JSON.stringify(stats) : null]
++          );
++          saved += r.rowCount;
++          await sleep(delayMs);
++        }
++
++        const oldest = Math.min(...items.map((i) => Number(i.started_at || i.finished_at)).filter(Number.isFinite));
++        state.pages += 1; state.imported += saved - savedBefore;
++        // Stop if the cursor can't move backwards (guards against loops).
++        if (!Number.isFinite(oldest) || (state.cursor && oldest >= Number(state.cursor))) { state.done = true; await setState("career_import", state); break; }
++        state.cursor = oldest;
++        if (items.length < PAGE_SIZE) state.done = true;
++        await setState("career_import", state);
++        if (state.done) break;
++      }
++      await finishRun(runId, "ok", seen, saved, null);
++      return { ok: true, done: Boolean(state.done), seen, saved, state };
++    } catch (error) {
++      await finishRun(runId, "error", seen, saved, error.message);
++      throw error;
++    }
++  });
++}
++
++async function syncStatus() {
++  if (!(await ensureSchema())) return { configured: false };
++  const [runs, last, career, counts] = await Promise.all([
++    pool.query("SELECT id, kind, status, started_at, finished_at, matches_seen, matches_saved, error FROM sync_runs ORDER BY started_at DESC, id DESC LIMIT 10"),
++    getState("last_success"), getState("career_import"),
++    pool.query("SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE source = 'career_import')::int AS imported FROM faceit_matches")
++  ]);
++  return { configured: true, lastSuccess: last, careerImport: career, matches: counts.rows[0], recentRuns: runs.rows };
++}
++
++module.exports = { syncRecent, importCareer, syncStatus };
+diff --git a/src/tracker.js b/src/tracker.js
+new file mode 100644
+index 0000000..0d5d8aa
+--- /dev/null
++++ b/src/tracker.js
+@@ -0,0 +1,88 @@
++const { pool, ensureSchema } = require("./db");
++const { faceitGet, getPlayerOutcome, getPlayerMatchStats } = require("./faceit");
++
++// The 1,680 comeback baseline. Inserted once as the first snapshot and never
++// updated or deleted by any code path.
++const BASELINE_ELO = 1680;
++const BASELINE_AT = "2026-11-11T00:00:00+08:00";
++
++async function persistMatches(historyItems, playerId, nickname, currentElo) {
++  if (!(await ensureSchema())) return { configured: false, saved: 0 };
++  const latestSnapshot = await pool.query(
++    "SELECT elo FROM elo_snapshots ORDER BY captured_at DESC, id DESC LIMIT 1"
++  );
++  let previousElo = latestSnapshot.rows[0]?.elo ?? null;
++  const isFirstSync = previousElo === null;
++
++  if (isFirstSync) {
++    await pool.query(
++      "INSERT INTO elo_snapshots (elo, captured_at) VALUES ($1, $2)",
++      [BASELINE_ELO, BASELINE_AT]
++    );
++    previousElo = BASELINE_ELO;
++  }
++
++  const known = await pool.query("SELECT match_id FROM faceit_matches");
++  const knownIds = new Set(known.rows.map((row) => row.match_id));
++  const newItems = (historyItems || []).filter((item) => item.match_id && !knownIds.has(item.match_id));
++  const chronological = [...newItems].reverse();
++  let saved = 0;
++
++  for (let index = 0; index < chronological.length; index++) {
++    const match = chronological[index];
++    let matchStats = null;
++    let matchMap = match.map || match.competition_name || "FACEIT match";
++    let score = null;
++
++    try {
++      const statsData = await faceitGet(`/matches/${encodeURIComponent(match.match_id)}/stats`);
++      const parsed = getPlayerMatchStats(statsData, playerId, nickname);
++      matchStats = parsed.stats;
++      matchMap = parsed.map || matchMap;
++      score = parsed.score;
++    } catch (error) {
++      console.warn(`Could not fetch stats for match ${match.match_id}: ${error.message}`);
++    }
++
++    // FACEIT's public player-history response does not expose a dependable
++    // per-match ELO delta. Attribute a delta only when exactly one new match
++    // appeared between two known ELO snapshots.
++    const canAttributeElo = !isFirstSync && chronological.length === 1 && Number.isFinite(Number(currentElo));
++    const eloBefore = canAttributeElo ? previousElo : null;
++    const eloAfter = canAttributeElo ? Number(currentElo) : null;
++    const eloChange = canAttributeElo ? Number(currentElo) - previousElo : null;
++
++    await pool.query(
++      `INSERT INTO faceit_matches
++        (match_id, finished_at, map, outcome, score, stats, elo_before, elo_after, elo_change)
++       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
++       ON CONFLICT (match_id) DO NOTHING`,
++      [match.match_id, match.finished_at || match.started_at || null, matchMap,
++       getPlayerOutcome(match, playerId), score, matchStats ? JSON.stringify(matchStats) : null,
++       eloBefore, eloAfter, eloChange]
++    );
++    saved++;
++  }
++
++  const current = Number(currentElo);
++  if (Number.isFinite(current)) {
++    const last = await pool.query(
++      "SELECT elo FROM elo_snapshots ORDER BY captured_at DESC, id DESC LIMIT 1"
++    );
++    if (!last.rows.length || last.rows[0].elo !== current) {
++      await pool.query("INSERT INTO elo_snapshots (elo) VALUES ($1)", [current]);
++    }
++  }
++  return { configured: true, saved, firstSync: isFirstSync };
++}
++
++async function readTrackingData() {
++  if (!(await ensureSchema())) return { configured: false, snapshots: [], matches: [] };
++  const [snapshots, matches] = await Promise.all([
++    pool.query("SELECT elo, captured_at FROM elo_snapshots ORDER BY captured_at ASC"),
++    pool.query("SELECT match_id, finished_at, map, outcome, score, stats, elo_before, elo_after, elo_change FROM faceit_matches ORDER BY finished_at DESC NULLS LAST LIMIT 50")
++  ]);
++  return { configured: true, snapshots: snapshots.rows, matches: matches.rows };
++}
++
++module.exports = { persistMatches, readTrackingData, BASELINE_ELO, BASELINE_AT };
+diff --git a/test/mock-faceit.js b/test/mock-faceit.js
+new file mode 100644
+index 0000000..98607c7
+--- /dev/null
++++ b/test/mock-faceit.js
+@@ -0,0 +1,28 @@
++// Minimal fake of the FACEIT Data API used only for offline tests.
++const http = require("http");
++const PLAYER_ID = "11111111-aaaa-bbbb-cccc-000000000001";
++let elo = 1700;
++const mk = (n, win) => ({
++  match_id: `1-test-${n}`, finished_at: 1762800000 + n * 3600, started_at: 1762799000 + n * 3600,
++  results: { winner: win ? "faction1" : "faction2" },
++  teams: { faction1: { roster: [{ player_id: PLAYER_ID }] }, faction2: { roster: [] } }
++});
++const history = Array.from({ length: 250 }, (_, i) => mk(250 - i, (250 - i) % 3 !== 0)); // newest first, like FACEIT
++const server = http.createServer((req, res) => {
++  const url = new URL(req.url, "http://x");
++  const send = (code, body) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
++  if (req.headers.authorization !== "Bearer test-key") return send(401, {});
++  if (url.pathname === "/players") return send(200, { player_id: PLAYER_ID, nickname: "kiyosei", country: "ph", avatar: null, games: { cs2: { faceit_elo: elo, skill_level: 7 } } });
++  if (url.pathname.endsWith("/stats/cs2")) return send(200, { lifetime: { "Win Rate %": "52", "Average K/D Ratio": "1.1", "Average Headshots %": "40" } });
++  if (url.pathname.endsWith("/history")) {
++    const limit = Math.min(Number(url.searchParams.get("limit")) || 20, 100);
++    const to = Number(url.searchParams.get("to"));
++    const offset = Number(url.searchParams.get("offset")) || 0;
++    let items = to ? history.filter((m) => m.started_at < to) : history;
++    return send(200, { items: items.slice(to ? 0 : offset, (to ? 0 : offset) + limit) });
++  }
++  const m = url.pathname.match(/^\/matches\/(.+)\/stats$/);
++  if (m) return send(200, { rounds: [{ round_stats: { Map: "de_mirage" }, teams: [{ team_stats: { "Final Score": "13" }, players: [{ player_id: PLAYER_ID, nickname: "kiyosei", player_stats: { "K/D Ratio": "1.2", ADR: "80", "Headshots %": "45" } }] }, { team_stats: { "Final Score": "9" }, players: [] }] }] });
++  send(404, {});
++});
++server.listen(4010, () => console.log("mock faceit on 4010"));
+diff --git a/test/retry.test.js b/test/retry.test.js
+new file mode 100644
+index 0000000..c383c11
+--- /dev/null
++++ b/test/retry.test.js
+@@ -0,0 +1,24 @@
++// Run: node test/retry.test.js  (offline; uses a throwaway local server)
++const http = require("http");
++const assert = require("assert");
++let hits = 0, mode = "flaky";
++const srv = http.createServer((req, res) => {
++  hits++;
++  if (mode === "flaky" && hits <= 2) { res.writeHead(429, { "retry-after": "0" }); return res.end("{}"); }
++  if (mode === "unauthorized") { res.writeHead(401); return res.end("{}"); }
++  res.writeHead(200, { "content-type": "application/json" }); res.end('{"ok":true}');
++});
++srv.listen(4020, async () => {
++  process.env.FACEIT_API_BASE = "http://localhost:4020";
++  process.env.FACEIT_API_KEY = "k";
++  const { faceitGet } = require("../src/faceit");
++  try {
++    assert.deepStrictEqual(await faceitGet("/x", { baseDelayMs: 5 }), { ok: true });
++    assert.strictEqual(hits, 3, "should retry twice after 429 then succeed");
++    hits = 0; mode = "unauthorized";
++    await assert.rejects(() => faceitGet("/x", { baseDelayMs: 5 }), /rejected the API key/);
++    assert.strictEqual(hits, 1, "401 must not be retried");
++    console.log("retry tests passed");
++  } catch (e) { console.error("FAILED:", e.message); process.exitCode = 1; }
++  srv.close();
++});
