@@ -61,7 +61,14 @@
           <div class="live-match__id"><span>MATCH ID</span><strong title="${esc(match.matchId)}">${esc(match.matchId || "—")}</strong></div>
         </div>
         <div class="live-match__steps">${progress}</div>
-        <p class="live-match__hint">${state === "READY" ? "Server is ready. Waiting for FACEIT API to confirm the match is in progress." : state === "IN_GAME" ? "Match is confirmed in progress by FACEIT's match API." : "Kiyosei is tracking your FACEIT match lifecycle."}</p>`;
+        <p class="live-match__hint">${state === "READY" ? "Server is ready. Waiting for FACEIT API to confirm the match is in progress." : state === "IN_GAME" ? "Match is confirmed in progress by FACEIT's match API." : "Kiyosei is tracking your FACEIT match lifecycle."}</p>
+        <div class="live-ai">
+          <div class="live-ai__toolbar">
+            <strong>GEMINI MATCH INTELLIGENCE</strong>
+            <button type="button" class="live-ai__button" data-live-briefing>GENERATE BRIEFING</button>
+          </div>
+          <div id="live-ai-briefing"><p class="live-ai__placeholder">Generate an evidence-based briefing from your stats and available FACEIT match details.</p></div>
+        </div>`;
     }
     const activeMatchId = active ? match.matchId : null;
     if (activeMatchId !== briefingLoadedFor) {
