@@ -96,6 +96,9 @@ const fail = (res, error) => res.status(error.status || 500).json({ error: error
 app.get("/api/sync/status", async (_req, res) => {
   try { res.json(await syncStatus()); } catch (e) { fail(res, e); }
 });
+// Live FACEIT match lifecycle detection (webhook receiver + protected inspection endpoints).
+require("./src/live").mount(app, { requireSecret });
+
 app.post("/api/sync", requireSecret, async (_req, res) => {
   try { res.json(await syncRecent()); } catch (e) { fail(res, e); }
 });
@@ -137,4 +140,7 @@ app.post("/api/coach/generate", requireSecret, async (_req, res) => {
 });
 
 app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
-app.listen(PORT, () => console.log(`Kiyosei FACEIT Tracker listening on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Kiyosei FACEIT Tracker listening on port ${PORT}`);
+  require("./src/live").startWorker();
+});

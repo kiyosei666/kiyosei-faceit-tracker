@@ -12,3 +12,5 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: FACEIT_WEBHOOK_SECRET
+        sync: false
