@@ -4,6 +4,7 @@
   const updated = document.getElementById("live-last-update");
   let briefingLoadedFor = null;
   let briefingBusy = false;
+  let briefingHtml = "";
   if (!body || !connection || !updated) return;
 
   const labels = {
@@ -67,12 +68,13 @@
             <strong>GEMINI MATCH INTELLIGENCE</strong>
             <button type="button" class="live-ai__button" data-live-briefing>GENERATE BRIEFING</button>
           </div>
-          <div id="live-ai-briefing"><p class="live-ai__placeholder">Generate an evidence-based briefing from your stats and available FACEIT match details.</p></div>
+          <div id="live-ai-briefing">${briefingHtml || '<p class="live-ai__placeholder">Generate an evidence-based briefing from your stats and available FACEIT match details.</p>'}</div>
         </div>`;
     }
     const activeMatchId = active ? match.matchId : null;
     if (activeMatchId !== briefingLoadedFor) {
       briefingLoadedFor = activeMatchId;
+      briefingHtml = active ? '<p class="live-ai__placeholder">Match detected. Generate a Gemini briefing when map and team details are available.</p>' : "";
       const panel = document.getElementById("live-ai-briefing");
       if (panel) panel.innerHTML = active ? '<p class="live-ai__placeholder">Match detected. Generate a Gemini briefing when map and team details are available.</p>' : "";
     }
@@ -108,16 +110,17 @@
       const b = data.briefing || {};
       const group = (title, items) => Array.isArray(items) && items.length
         ? '<section class="live-ai__group"><h4>' + title + '</h4><ul>' + items.map(x => '<li>' + esc(x) + '</li>').join("") + '</ul></section>' : "";
-      if (panel) panel.innerHTML =
-        '<div class="live-ai__head"><span>GEMINI · ' + esc(data.model || "AI") + '</span><small>' + esc(data.map || "MAP UNKNOWN") + '</small></div>' +
+      briefingHtml = '<div class="live-ai__head"><span>GEMINI · ' + esc(data.model || "AI") + '</span><small>' + esc(data.map || "MAP UNKNOWN") + '</small></div>' +
         '<h3>' + esc(b.headline || "MATCH BRIEFING") + '</h3><p class="live-ai__plan">' + esc(b.mapPlan || "") + '</p>' +
         group("STRENGTHS TO LEAN ON", b.strengthsToLeanOn) +
         group("THREATS TO WATCH", b.threatsToWatch) +
         group("YOUR FOCUS", b.personalFocus) +
         group("DATA LIMITS", b.confidenceNotes);
+      if (panel) panel.innerHTML = briefingHtml;
       button.textContent = "REFRESH BRIEFING";
     } catch (error) {
-      if (panel) panel.innerHTML = '<p class="live-ai__error">' + esc(error.message) + '</p>';
+      briefingHtml = '<p class="live-ai__error">' + esc(error.message) + '</p>';
+      if (panel) panel.innerHTML = briefingHtml;
       button.textContent = "TRY AGAIN";
     } finally {
       briefingBusy = false;
