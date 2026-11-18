@@ -117,6 +117,44 @@ function mount(app, { requireSecret }) {
     return res.status(err.status === 413 ? 413 : 400).json({ error: err.status === 413 ? "Payload too large." : "Invalid request body." });
   });
 
+  // Public, read-only projection for the dashboard. Never expose SYNC_SECRET to browser code.
+  app.get("/api/live/public", async (_req, res) => {
+    try {
+      if (!(await ensureSchema())) return res.status(503).json({ ok: false, error: "Live detection database unavailable." });
+      const rows = (await pool.query(
+        "SELECT * FROM faceit_live_matches ORDER BY (closed_reason IS NULL) DESC, created_at DESC LIMIT 2"
+      )).rows;
+      const current = rows.find((r) => r.closed_reason === null) || null;
+      const last = current ? null : rows[0] || null;
+      const match = current || last;
+      res.set("Cache-Control", "no-store");
+      return res.json({
+        ok: true,
+        state: current ? current.state : "INACTIVE",
+        inMatch: Boolean(current),
+        inGame: Boolean(current && current.state === "IN_GAME"),
+        match: match ? {
+          matchId: match.match_id,
+          state: match.state,
+          closedReason: match.closed_reason,
+          faceitStatus: match.status_raw,
+          map: match.map,
+          teams: match.teams,
+          detectedAt: match.detected_at ? new Date(match.detected_at).toISOString() : null,
+          configuringAt: match.faceit_configured_at ? new Date(match.faceit_configured_at).toISOString() : null,
+          readyAt: match.ready_at ? new Date(match.ready_at).toISOString() : null,
+          inGameAt: match.in_game_at ? new Date(match.in_game_at).toISOString() : null,
+          endedAt: match.ended_at ? new Date(match.ended_at).toISOString() : null,
+          lastEventAt: match.last_event_at ? new Date(match.last_event_at).toISOString() : null
+        } : null,
+        serverTime: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("[live] public status failed:", error.message);
+      return res.status(500).json({ ok: false, error: "Unable to read live status." });
+    }
+  });
+
   app.get("/api/live", requireSecret, async (_req, res) => {
     try {
       if (!(await ensureSchema())) return res.status(503).json({ error: "Database is not configured." });
