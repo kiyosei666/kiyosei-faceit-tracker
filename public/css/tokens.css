@@ -1,99 +1,71 @@
 /* ==========================================================================
    TOKENS — the single place to retheme the dashboard.
-   Change a value here and every component follows. No component file should
-   contain a raw colour, radius, blur or font name; use these variables.
+   Dark, flat, monochrome. Depth comes from surface steps, borders, type and
+   spacing — never gradients, blur, glow or shadows. Green/red exist ONLY to
+   communicate wins, losses and errors.
    ========================================================================== */
 
 :root {
   color-scheme: dark;
 
-  /* ---- Brand & accents -------------------------------------------------- */
-  --accent:        #ff5500;
-  --accent-soft:   #ff8a4d;
-  --accent-glow:   rgba(255, 85, 0, 0.35);
-  --accent-wash:   rgba(255, 85, 0, 0.12);
-
-  --hue-blue:      #3b6bff;
-  --hue-violet:    #8b5cf6;
-  --hue-magenta:   #e0408a;
-  --hue-amber:     #ffb020;
-
-  --win:           #22c55e;
-  --win-glow:      rgba(34, 197, 94, 0.28);
-  --loss:          #ef4444;
-  --loss-glow:     rgba(239, 68, 68, 0.28);
-
-  /* Spectrum used by the goal bar (reference: rainbow score bar) */
-  --spectrum: linear-gradient(90deg, #ef4444 0%, #ff5500 28%, #ffb020 52%, #22c55e 76%, #3b82f6 100%);
-
   /* ---- Surfaces --------------------------------------------------------- */
-  --bg:              #020203;
-  --glass-1:         rgba(255, 255, 255, 0.035);  /* quiet inner tiles   */
-  --glass-2:         rgba(255, 255, 255, 0.06);   /* default pills/cards */
-  --glass-3:         rgba(255, 255, 255, 0.10);   /* hover / active      */
-  --glass-panel:     rgba(16, 16, 20, 0.58);      /* big frosted cards   */
-  --glass-panel-alt: rgba(10, 10, 14, 0.72);      /* fallback / dense    */
-  --glass-border:        rgba(255, 255, 255, 0.10);
-  --glass-border-subtle: rgba(255, 255, 255, 0.06);
-  --glass-border-strong: rgba(255, 255, 255, 0.20);
-  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  --shadow-panel:    0 24px 60px -20px rgba(0, 0, 0, 0.8);
-  --shadow-float:    0 18px 40px -12px rgba(0, 0, 0, 0.85);
-
-  /* Blur strengths */
-  --blur-sm: blur(12px) saturate(140%);
-  --blur-md: blur(24px) saturate(150%);
-  --blur-lg: blur(40px) saturate(165%);
-
-  /* Mesh used on the "detail" panel (reference: colourful right-hand panel) */
-  --mesh:
-    radial-gradient(60% 45% at 90% 0%,  rgba(59, 107, 255, 0.55), transparent 70%),
-    radial-gradient(55% 40% at 0%  35%, rgba(139, 92, 246, 0.30), transparent 70%),
-    radial-gradient(70% 50% at 100% 100%, rgba(224, 64, 74, 0.40), transparent 70%),
-    radial-gradient(60% 40% at 10% 100%, rgba(255, 85, 0, 0.28), transparent 70%);
+  --bg:          #090A0C;   /* page            */
+  --surface-1:   #111216;   /* cards           */
+  --surface-2:   #181A1F;   /* inner tiles     */
+  --surface-3:   #202228;   /* elevated/hover  */
+  --border:      #292B32;
+  --border-soft: #1E2025;   /* hairlines inside cards */
+  --border-strong: #3A3D46; /* hover / focus-adjacent */
 
   /* ---- Text ------------------------------------------------------------- */
-  --text:         #ffffff;
-  --text-primary: #f3f4f6;
-  --text-muted:   #a1a1aa;
-  --text-dim:     #6b6b76;
+  --text:        #F0F0F0;
+  --text-muted:  #92949D;
+  --text-dim:    #666A74;
+
+  /* ---- Actions ---------------------------------------------------------- */
+  --btn:         #E5E5E5;
+  --btn-text:    #101114;
+  --btn-hover:   #FFFFFF;
+
+  /* ---- Performance states (the only colour in the product) -------------- */
+  --win:         #6FAE8A;
+  --win-bg:      #14201A;
+  --win-border:  #2A4636;
+  --loss:        #C46A66;
+  --loss-bg:     #241615;
+  --loss-border: #4A2A29;
 
   /* ---- Type ------------------------------------------------------------- */
-  /* To change the display typeface, edit ONLY this line (and the <link> in
-     index.html). Coolvetica is NOT used: its free licence excludes web use. */
-  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --tracking-caps: 0.06em;
+  --tracking-caps: 0.08em;
 
   /* ---- Shape ------------------------------------------------------------ */
   --r-pill: 9999px;
-  --r-xl:   32px;
-  --r-lg:   26px;
-  --r-md:   18px;
-  --r-sm:   12px;
+  --r-lg:   16px;   /* cards */
+  --r-md:   12px;   /* rows, inner blocks */
+  --r-sm:   8px;
 
   /* ---- Layout ----------------------------------------------------------- */
-  --shell-max:  1480px;
-  --shell-pad:  clamp(14px, 3vw, 32px);
-  --rail-w:     60px;
-  --gap:        20px;
-  --header-h:   68px;
-  --dock-h:     64px;
+  --shell-max:  1440px;
+  --shell-pad:  clamp(14px, 2.4vw, 32px);
+  --gap:        16px;
+  --header-h:   64px;
 
   /* ---- Motion ----------------------------------------------------------- */
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --dur:  0.22s;
+  --dur:  0.16s;
 }
 
-/* ---- Performance tiers (K/D ranks; names live in app.js getFormTier) ----- */
+/* ---- K/D performance tiers: restrained scale, red → grey → green → white -- */
 :root {
-  --tier-bot:     #ef6464;
-  --tier-brain:   #df985c;
-  --tier-warming: #d4b65e;
-  --tier-solid:   #a9b56b;
-  --tier-locked:  #83bd75;
-  --tier-prime:   #57d58a;
-  --tier-donk:    #57c9d5;
-  --tier-godlike: #c08aff;
-  --tier-pending: #6b6b76;
+  --tier-bot:     #C46A66;
+  --tier-brain:   #B3827A;
+  --tier-warming: #92949D;
+  --tier-solid:   #A8B0A8;
+  --tier-locked:  #8DB89D;
+  --tier-prime:   #6FAE8A;
+  --tier-donk:    #D8DAD8;
+  --tier-godlike: #FFFFFF;
+  --tier-pending: #666A74;
 }

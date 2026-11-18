@@ -5,36 +5,45 @@ Front end only: `public/`. Nothing here touches the API, database or data shapes
 ## File map
 | File | Purpose |
 |---|---|
-| `public/css/tokens.css` | **Theme.** Colours, blur, radii, fonts, layout sizes, K/D tier colours. Retheme here. |
-| `public/css/base.css` | Reset, background orbs, focus/reduced-motion rules |
-| `public/css/components.css` | `.glass`, `.panel`, `.pill`, `.seg`, `.tile`, `.icon-btn`, toast, skeletons |
-| `public/css/layout.css` | Top pill nav, left rail, content grid, floating dock, breakpoints |
-| `public/css/sections.css` | Hero, ELO chart, match history, current form |
+| `public/css/tokens.css` | **Theme.** Flat monochrome surfaces, text, borders, win/loss colours, radii, layout sizes, K/D tier colours. Retheme here. |
+| `public/css/base.css` | Reset, type helpers, focus/reduced-motion rules |
+| `public/css/components.css` | `.card`, `.panel`, `.pill` (+ variants), `.seg`, `.tile`, toast, skeletons |
+| `public/css/layout.css` | Sticky top bar with pill nav, 12-column dashboard grid, breakpoints |
+| `public/css/sections.css` | Overview hero, ELO chart, match history, current form |
 | `public/css/features.css` | Styles for the feature modules below |
-| `public/js/ui.js` | UI-only behaviour (nav highlight, refresh, back-to-top) |
-| `public/js/features/*.js` | One file per feature (ring, streak, coach, celebrations) |
-| `public/app.js` | Data loading + rendering (unchanged logic) |
+| `public/css/live-match.css` | Live match center (idle / `.is-active`) and AI briefing |
+| `public/js/ui.js` | UI-only behaviour (nav highlight, refresh) |
+| `public/js/features/*.js` | One file per feature (ring, streak, coach, celebrations, live match) |
+| `public/app.js` | Data loading + rendering |
+
+## Design rules
+Dark, flat, monochrome. Depth = surface steps (`--surface-1/2/3`), hairline borders, type and spacing.
+**Never** add gradients, blur, glow, shadows or accent hues. `--win` / `--loss` (muted) are reserved for
+wins, losses and errors. Pills are part of the language: `.pill` (outline), `.pill--solid`, `.pill--active`
+(white, dark text), `.pill--primary`, `.pill--win/--loss`, `.seg` for segmented controls.
+FACEIT level badges are greyscaled in `.level-icon` (one `filter` line in `components.css` to revert).
+
+## Layout
+`.dash` is a 12-column grid. Overview, Live match → full width; ELO progression (8) + Current form (4);
+Match history (7) + AI coach (5, sticky). Below 1180px the middle row stacks; below 960px everything is one
+column; below 760px the top bar becomes brand/actions plus a horizontally scrolling pill nav.
 
 ## Common edits
-- **Change accent colour:** `--accent` / `--accent-soft` in `tokens.css`.
-- **More/less frosted glass:** `--glass-panel`, `--blur-md`, `--blur-lg`.
+- **Change surfaces / text:** `--bg`, `--surface-*`, `--text*`, `--border*` in `tokens.css`.
 - **Rounder/squarer:** `--r-*` radii.
-- **Change display font:** `--font-display` + the Google Fonts `<link>` in `index.html`.
-  Coolvetica is intentionally not used and its files were removed: the free licence covers desktop/static
-  use only, not web fonts. Only use a webfont you hold a web licence for (or an open-licence one).
+- **Change font:** `--font-display` / `--font-body` + the Google Fonts `<link>` in `index.html`.
 - **Goal bar range:** uses `BASELINE`, `TARGETS`, `GOAL` at the top of `app.js`; ticks redraw automatically.
 - **K/D rank colours:** `--tier-*` tokens. Rank names/thresholds stay in `getFormTier()` in `app.js`.
 
 ## Add a new section (e.g. AI Coach)
-1. Add inside `.layout__main` (or `.layout__side`) in `index.html`:
+1. Add as a direct child of `.dash` in `index.html` (full width by default; add a `.dash__*` span rule in `layout.css` to share a row):
    ```html
-   <section class="glass panel" id="ai-coach" data-section="ai-coach">
+   <section class="card panel" id="ai-coach" data-section="ai-coach">
      <div class="panel__head"><h2 class="panel__title">AI COACH</h2></div>
      ...
    </section>
    ```
-   Add `glass--mesh` for the colourful detail-panel look.
-2. Add a nav link in the top bar and rail: `data-nav="ai-coach"`. Highlighting is automatic.
+2. Add a nav link in the top bar: `data-nav="ai-coach"`. Highlighting is automatic.
 3. Add a `<symbol id="i-...">` to the icon sprite if you need a new icon.
 4. Section-specific CSS goes in a new block of `sections.css`; reuse components first.
 

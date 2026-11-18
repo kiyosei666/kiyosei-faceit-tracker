@@ -15,7 +15,7 @@
 (function () {
   const KEY = "kiyosei:milestones:v1";
   const STATE_VERSION = 2;   // older saved state is adopted silently (no surprise confetti after an update)
-  const COLORS = ["#ff5500", "#ffb020", "#22c55e", "#3b82f6", "#8b5cf6", "#e0408a", "#ffffff"];
+  const COLORS = ["#F0F0F0", "#E5E5E5", "#92949D", "#666A74", "#292B32"];
   let banner = null, hideTimer = null, rafId = null, canvas = null;
 
   function levelOf(elo) {
@@ -52,7 +52,7 @@
   function showBanner(label, eyebrow) {
     if (!banner) {
       banner = document.createElement("div");
-      banner.className = "milestone glass";
+      banner.className = "milestone";
       banner.setAttribute("role", "status");
       banner.setAttribute("aria-live", "polite");
       document.body.appendChild(banner);
