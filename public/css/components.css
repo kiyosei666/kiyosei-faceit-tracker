@@ -147,7 +147,13 @@ a.pill--primary:hover, button.pill--primary:hover { background: var(--btn-hover)
 }
 
 /* ---- Level icon (official FACEIT artwork, kept as data iconography) ------ */
-.level-icon { width: 20px; height: 20px; flex: none; display: block; filter: grayscale(1) brightness(1.25) contrast(1.05); }
+.level-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: block;
+  filter: none;
+}
 .level-icon[data-pending] { visibility: hidden; }
 .level-icon--xl { width: 56px; height: 56px; }
 
