@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="/css/layout.css">
   <link rel="stylesheet" href="/css/sections.css">
   <link rel="stylesheet" href="/css/features.css">
+  <link rel="stylesheet" href="/css/live-match.css">
 </head>
 <body>
   <!-- Icon sprite: add a <symbol> here, use it with <svg class="icon"><use href="#i-name"/></svg> -->
@@ -23,6 +24,7 @@
     <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 6-8 3 3"/><path d="M3 21h18"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></symbol>
     <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+    <symbol id="i-live" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8M2.8 2.8a13 13 0 0 0 0 18.4M21.2 2.8a13 13 0 0 1 0 18.4"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
     <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
     <symbol id="i-coach" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></symbol>
@@ -36,6 +38,7 @@
     <a class="icon-btn" href="#rating"        data-nav="rating"        title="Dashboard"><svg class="icon"><use href="#i-dashboard"/></svg></a>
     <a class="icon-btn" href="#history"       data-nav="history"       title="ELO progression"><svg class="icon"><use href="#i-chart"/></svg></a>
     <a class="icon-btn" href="#matches-panel" data-nav="matches-panel" title="Match history"><svg class="icon"><use href="#i-list"/></svg></a>
+    <a class="icon-btn" href="#live-match"    data-nav="live-match"    title="Live match"><svg class="icon"><use href="#i-live"/></svg></a>
     <a class="icon-btn" href="#form-panel"    data-nav="form-panel"    title="Current form"><svg class="icon"><use href="#i-pulse"/></svg></a>
     <a class="icon-btn" href="#ai-coach"      data-nav="ai-coach"      title="AI coach"><svg class="icon"><use href="#i-coach"/></svg></a>
   </nav>
@@ -51,6 +54,7 @@
         <a class="topnav__link is-active" href="#rating"        data-nav="rating">DASHBOARD</a>
         <a class="topnav__link"           href="#history"       data-nav="history">ELO</a>
         <a class="topnav__link"           href="#matches-panel" data-nav="matches-panel">MATCHES</a>
+        <a class="topnav__link"           href="#live-match"    data-nav="live-match">LIVE</a>
         <a class="topnav__link"           href="#form-panel"    data-nav="form-panel">FORM</a>
         <a class="topnav__link"           href="#ai-coach"      data-nav="ai-coach">COACH</a>
       </nav>
@@ -123,6 +127,27 @@
               <div class="goal__track"><div class="goal__rest"></div><span class="goal__marker"></span></div>
               <div class="goal__ticks" id="goal-ticks"></div>
             </div>
+          </div>
+        </section>
+
+        <!-- Live FACEIT match status -->
+        <section class="glass panel live-match" id="live-match" data-section="live-match" aria-live="polite">
+          <div class="panel__head">
+            <div>
+              <p class="eyebrow live-match__eyebrow">KIYOSEI · REAL-TIME DETECTION</p>
+              <h2 class="panel__title">LIVE MATCH</h2>
+            </div>
+            <span class="pill pill--sm live-match__connection" id="live-connection"><i class="live-match__dot"></i><span>CONNECTING</span></span>
+          </div>
+          <div class="live-match__body" id="live-match-body">
+            <div class="live-match__empty">
+              <span class="live-match__pulse" aria-hidden="true"></span>
+              <div><strong>CHECKING FACEIT STATUS</strong><p>Waiting for Kiyosei's live detection service.</p></div>
+            </div>
+          </div>
+          <div class="live-match__footer">
+            <span id="live-last-update">WAITING FOR FIRST UPDATE</span>
+            <span>UPDATES AUTOMATICALLY</span>
           </div>
         </section>
 
@@ -240,6 +265,7 @@
   <script src="/js/features/streak.js"></script>
   <script src="/js/features/coach.js"></script>
   <script src="/js/features/celebrations.js"></script>
+  <script src="/js/features/live-match.js"></script>
   <script src="/app.js"></script>
   <script src="/js/ui.js"></script>
 </body>
