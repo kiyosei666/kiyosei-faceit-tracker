@@ -33,6 +33,8 @@
     const state = data?.state || "INACTIVE";
     const match = data?.match;
     const active = Boolean(data?.inMatch && match);
+    const section = document.getElementById("live-match");
+    if (section) section.classList.toggle("is-active", active);
     const label = labels[state] || state.replaceAll("_", " ");
     const stepIndex = steps.indexOf(state);
     const progress = steps.map((step, index) => {

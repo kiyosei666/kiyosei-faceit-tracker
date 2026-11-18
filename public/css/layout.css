@@ -1,187 +1,143 @@
 /* ==========================================================================
-   LAYOUT — page frame: top pill nav, left icon rail, content grid, dock.
+   LAYOUT — page shell, top navigation, 12-column dashboard grid.
 
-   Adding a section: drop a <section class="glass panel" data-section="x">
-   into .layout__main or .layout__side. Add a matching nav link/rail button
-   with data-nav="x". See docs/FRONTEND.md.
+   Adding a section: drop <section class="card panel" data-section="x" id="x">
+   into .dash, give it a span class, and add a nav link with data-nav="x".
    ========================================================================== */
 
 .app {
-  position: relative;
-  z-index: 1;
   width: min(100%, var(--shell-max));
   margin-inline: auto;
-  padding: 14px var(--shell-pad) 0;
+  padding: 0 var(--shell-pad) 48px;
 }
 
-/* ---- Top navigation (pills in a frosted bar) ---------------------------- */
+/* ---- Top bar: flat, solid, sticky ---------------------------------------- */
 .topbar {
   position: sticky;
-  top: 12px;
+  top: 0;
   z-index: 50;
   display: flex;
   align-items: center;
-  gap: 14px;
-  min-height: var(--header-h);
-  padding: 10px 12px;
-  border-radius: var(--r-pill);
-  background: rgba(14, 14, 18, 0.55);
-  -webkit-backdrop-filter: var(--blur-lg);
-  backdrop-filter: var(--blur-lg);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-float), var(--glass-highlight);
+  gap: 20px;
+  height: var(--header-h);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-soft);
 }
-.topbar__brand {
-  display: grid;
-  place-items: center;
-  width: 46px; height: 46px;
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   flex: none;
-  border-radius: 50%;
-  background: var(--glass-2);
-  border: 1px solid var(--glass-border);
+  text-decoration: none;
 }
-.topbar__brand img { width: 24px; height: 20px; filter: drop-shadow(0 0 10px var(--accent-glow)); }
+.brand img { width: 22px; height: 18px; filter: grayscale(1) brightness(1.7); }
+.brand__name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text);
+}
+.brand__sub { font-size: 10px; font-weight: 500; letter-spacing: 0.14em; color: var(--text-dim); }
 
 .topnav {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px;
-  border-radius: var(--r-pill);
-  background: rgba(0, 0, 0, 0.32);
-  border: 1px solid var(--glass-border-subtle);
+  gap: 2px;
   min-width: 0;
   position: relative;   /* offsetParent for centering the active pill on mobile */
 }
 .topnav__link {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 18px;
+  height: 30px;
+  padding: 0 14px;
   border-radius: var(--r-pill);
-  border: 1px solid transparent;
-  font-family: var(--font-display);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   text-decoration: none;
   color: var(--text-muted);
   white-space: nowrap;
-  transition: all var(--dur) var(--ease);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.topnav__link:hover { color: var(--text); background: var(--glass-2); }
-.topnav__link.is-active {
-  color: var(--text);
-  background: var(--glass-2);
-  border-color: rgba(255, 85, 0, 0.55);
-  box-shadow: 0 0 16px rgba(255, 85, 0, 0.22), var(--glass-highlight);
-}
-.topbar__right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: auto;
-  flex: none;
-}
+.topnav__link:hover { color: var(--text); background: var(--surface-2); }
+.topnav__link.is-active { background: var(--btn); color: var(--btn-text); font-weight: 600; }
+.brand[data-nav].is-active { opacity: 1; }
 
-/* ---- Left icon rail ----------------------------------------------------- */
-.rail {
-  position: fixed;
-  z-index: 40;
-  left: var(--shell-pad);
-  top: calc(var(--header-h) + 52px);
-  display: none;
-  flex-direction: column;
-  gap: 10px;
-  padding: 8px;
-  border-radius: var(--r-pill);
-  background: rgba(14, 14, 18, 0.5);
-  -webkit-backdrop-filter: var(--blur-md);
-  backdrop-filter: var(--blur-md);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-float), var(--glass-highlight);
-}
+.topbar__right { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
 
-/* ---- Content grid ------------------------------------------------------- */
-.layout {
+/* ---- Dashboard grid ------------------------------------------------------ */
+.dash {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(340px, 1fr);
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: var(--gap);
-  margin-top: var(--gap);
+  padding-top: var(--gap);
   align-items: start;
 }
-.layout__main, .layout__side { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
-/* the ONLY scroll offset (html has no scroll-padding, so offsets never double up) */
-[data-section] { scroll-margin-top: calc(var(--header-h) + 28px); }
+.dash > * { grid-column: 1 / -1; }
+.dash__history { grid-column: span 8; align-self: stretch; }
+.dash__form    { grid-column: span 4; align-self: stretch; }
+.dash__matches { grid-column: span 7; }
+.dash__coach   { grid-column: span 5; position: sticky; top: calc(var(--header-h) + var(--gap)); }
 
-/* ---- Footer ------------------------------------------------------------- */
+/* the ONLY scroll offset */
+[data-section] { scroll-margin-top: calc(var(--header-h) + var(--gap)); }
+
+/* ---- Footer -------------------------------------------------------------- */
 .app-footer {
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px 16px;
-  padding: 36px 12px 0;
-  font-family: var(--font-display);
-  font-size: 12px;
+  gap: 8px 16px;
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 10.5px;
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--text-dim);
 }
 
-/* ---- Floating action dock (reference: bottom pill bar) ------------------ */
-.dock {
-  position: fixed;
-  z-index: 60;
-  left: 50%;
-  bottom: max(18px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px;
-  border-radius: var(--r-pill);
-  background: rgba(18, 18, 24, 0.55);
-  -webkit-backdrop-filter: var(--blur-lg);
-  backdrop-filter: var(--blur-lg);
-  border: 1px solid var(--glass-border-strong);
-  box-shadow: var(--shadow-float), var(--glass-highlight);
-}
-.dock .pill { padding: 11px 20px; }
-
 /* ==========================================================================
    RESPONSIVE
    ========================================================================== */
-
-/* Wide: rail appears, content shifts right to clear it */
-@media (min-width: 1240px) {
-  .rail { display: flex; }
-  .app { padding-left: calc(var(--shell-pad) + var(--rail-w) + 24px); }
-  .topbar { margin-left: 0; }
-}
-
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .topbar__right .pill-sync { display: none; }
+  .dash__history, .dash__form { grid-column: 1 / -1; }
+  .dash__matches { grid-column: span 7; }
+  .dash__coach   { grid-column: span 5; }
 }
 
-@media (max-width: 999px) {
-  .layout { grid-template-columns: 1fr; }
+@media (max-width: 960px) {
+  .dash__matches, .dash__coach { grid-column: 1 / -1; position: static; }
 }
 
+/* Mobile: two-row bar — brand + actions, then a scrolling pill nav */
 @media (max-width: 760px) {
-  :root { --header-h: 60px; }
-  .topbar { flex-wrap: wrap; border-radius: var(--r-xl); gap: 10px; }
+  :root { --header-h: 96px; --gap: 12px; }
+  .topbar { flex-wrap: wrap; align-content: center; gap: 8px 10px; padding: 10px 0 8px; height: auto; min-height: 96px; }
+  .brand__sub { display: none; }
   .topbar__right { margin-left: auto; }
-  .topbar__right .pill-profile { display: none; }
+  .topbar__right .pill-conn { display: none; }
+  .topbar__right .pill-label-long { display: none; }
+  .topbar__right .pill { height: 34px; }
+  #refresh-btn { width: 34px; padding: 0; }
   .topnav {
     order: 3;
     width: 100%;
     overflow-x: auto;
     scrollbar-width: none;
+    gap: 4px;
+    margin-inline: calc(var(--shell-pad) * -1);
+    padding-inline: var(--shell-pad);
+    width: calc(100% + var(--shell-pad) * 2);
   }
   .topnav::-webkit-scrollbar { display: none; }
-  .topnav__link { padding: 8px 14px; font-size: 12px; }
-  .dock { gap: 2px; }
-  .dock .pill { padding: 10px 14px; font-size: 12px; }
-  .dock .pill-label-long { display: none; }
+  .topnav__link { height: 34px; padding: 0 15px; border: 1px solid var(--border); }
+  .topnav__link.is-active { border-color: var(--btn); }
+  .app-footer { flex-direction: column; }
 }

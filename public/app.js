@@ -368,8 +368,11 @@ function renderHistorySummary(pts, range, allTimePeak, peakSource) {
   `;
 }
 
+let lastEloArgs = null, lastEloWidth = 0;
 function renderEloHistory(snapshots, range = "all", allTimePeak = null, peakSource = null) {
+  lastEloArgs = [snapshots, range, allTimePeak, peakSource];
   const root = $("elo-chart");
+  lastEloWidth = Math.round(root.clientWidth || 0);
   $("history-count").textContent = `${snapshots.length} SNAPSHOT${snapshots.length === 1 ? "" : "S"}`;
   const pts = snapshots.map((s) => ({ v: Number(s.elo), t: new Date(s.captured_at) }))
     .filter((p) => Number.isFinite(p.v) && Number.isFinite(p.t.getTime()));
@@ -390,7 +393,10 @@ function renderEloHistory(snapshots, range = "all", allTimePeak = null, peakSour
     return;
   }
 
-  const W = 900, H = 260, L = 48, R = 20, T = 20, B = 34;
+  // Draw at the container's real width so axis text stays legible on phones.
+  const W = Math.max(300, Math.round(root.clientWidth || 900));
+  const H = W < 560 ? 230 : 300;
+  const L = W < 560 ? 40 : 48, R = 16, T = 16, B = 32;
   const vals = pts.map((p) => p.v);
   const minVal = Math.min(...vals, BASELINE);
   const maxVal = Math.max(...vals, BASELINE);
@@ -415,21 +421,10 @@ function renderEloHistory(snapshots, range = "all", allTimePeak = null, peakSour
     : `<circle class="chart-pt" cx="${x(pts.length - 1)}" cy="${y(vals[vals.length - 1])}" r="5"/>`;
 
   root.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="ELO Progression Chart">
-    <defs>
-      <linearGradient id="eloGlowArea" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#ff5500" stop-opacity="0.35"/>
-        <stop offset="100%" stop-color="#ff5500" stop-opacity="0"/>
-      </linearGradient>
-      <linearGradient id="eloLine" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stop-color="#ff3d00"/>
-        <stop offset="55%" stop-color="#ff5500"/>
-        <stop offset="100%" stop-color="#ffb020"/>
-      </linearGradient>
-    </defs>
     ${grid}
     ${refs}
-    <path class="chart-area" fill="url(#eloGlowArea)" d="${area}"/>
-    <path class="chart-line" pathLength="1" stroke="url(#eloLine)" d="${line}"/>
+    <path class="chart-area" d="${area}"/>
+    <path class="chart-line" d="${line}"/>
     ${dots}
     <g class="chart-hov" id="chart-hov">
       <line class="chart-crosshair" id="chart-cross" y1="${T}" y2="${H - B}"/>
@@ -468,6 +463,17 @@ function renderEloHistory(snapshots, range = "all", allTimePeak = null, peakSour
 
   renderHistorySummary(pts, range, allTimePeak, peakSource);
 }
+
+// Redraw the chart when its container width changes meaningfully (rotation, resize).
+let eloResizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(eloResizeTimer);
+  eloResizeTimer = setTimeout(() => {
+    const root = $("elo-chart");
+    if (!lastEloArgs || !root || !root.querySelector("svg")) return;
+    if (Math.abs(Math.round(root.clientWidth) - lastEloWidth) > 24) renderEloHistory(...lastEloArgs);
+  }, 150);
+});
 
 // ==========================================================================
 // API DATA LOADERS
